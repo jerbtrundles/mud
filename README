@@ -1,0 +1,107 @@
+# MiniMUD
+
+MiniMUD is a text-based role-playing game where you explore a mysterious cave system, fight enemies, collect treasure, and complete quests in a classic dungeon adventure.
+
+## Overview
+
+MiniMUD is a Python-based text adventure game with a classic RPG feel. Explore caves, towns, and mysterious regions while fighting monsters, collecting items, and completing quests. The game features a simple yet engaging combat system, inventory management, shops, crafting, and a variety of environments to discover.
+
+## Features
+
+- **Interactive Text-Based Exploration**: Navigate through a world of interconnected rooms and regions
+- **Combat System**: Battle various enemies with different strengths and abilities
+- **Equipment System**: Find, buy, and equip weapons and armor to increase your combat effectiveness
+- **Item Collection**: Gather resources, treasures, and quest items throughout your journey
+- **Town Services**: Visit shops, inns, blacksmiths, and more to access various services
+- **Quest System**: Complete quests for rewards and story progression
+- **Dynamic Environment**: Experience changing weather and environmental effects
+- **Crafting System**: Create useful items from gathered resources
+- **Save/Load System**: Save your progress and continue your adventure later
+
+## Installation
+
+### Requirements
+- Python 3.x
+- Pygame library
+
+### Steps
+
+1. Clone the repository:
+   ```
+   git clone https://github.com/jerbtrundles/minimud.git
+   cd minimud
+   ```
+
+2. Install the required dependencies:
+   ```
+   pip install pygame
+   ```
+
+3. Run the game:
+   ```
+   python main.py
+   ```
+
+## How to Play
+
+### Basic Commands
+
+- **Movement**: `north`, `south`, `east`, `west` (or shortcuts `n`, `s`, `e`, `w`)
+- **Look**: `look` or `l` to observe your surroundings
+- **Inventory**: `inventory` or `i` to check what you're carrying
+- **Take**: `take [item]` to pick up objects
+- **Use**: `use [item]` to use items in your inventory
+- **Equip**: `equip [item]` to wear armor or wield weapons
+- **Attack**: `attack [enemy]` or `a [enemy]` to fight enemies
+- **Status**: `status` to check your stats
+- **Help**: `help` to see all available commands
+
+### Advanced Commands
+
+- **Shop**: `list`, `buy [item]`, `sell [item]` to interact with shops
+- **Crafting**: `recipes`, `craft [item]` to create new items
+- **Quest**: `quests`, `quest [id]`, `quest start [id]`, `quest complete [id]`
+- **Save/Load**: `save [filename]`, `load [filename]`, `autosave [on/off]`
+- **Town Services**: `rest`, `repair [item]`, `pray [blessing/healing]`
+
+For a complete list of commands, use the `help` command in-game or `commands` for a compact list.
+
+## Game Structure
+
+### Regions
+
+The game world is divided into several distinct regions:
+
+1. **Shadowed Depths** - A network of natural caverns that extends deep into the mountain
+2. **Goblin Territory** - An area claimed by goblins, marked with crude symbols
+3. **Adventurer's Rest** - A small outpost where adventurers gather to trade and rest
+
+### Town Services
+
+The town of Adventurer's Rest offers various services:
+
+- **Shop** - Buy and sell items
+- **Tavern** - Rest to restore health and gather rumors
+- **Blacksmith** - Repair damaged equipment
+- **Chapel** - Receive blessings or healing
+- **Alchemist** - Purchase potions and special items
+- **Garden** - Gather herbs and reagents for crafting
+
+## Code Structure
+
+The game is organized into several modules:
+
+- **Core**: Game loop, state management, command parsing, save/load system
+- **Entities**: Player and enemy classes
+- **Items**: Equipment, consumables, treasures, and crafting materials
+- **Systems**: Combat, shops, crafting, quests, and weather
+- **World**: Room definitions, region management, and environment
+
+## Extending the Game
+
+MiniMUD is designed to be easily extendable:
+
+- Add new rooms by modifying the `_initialize_rooms` method in `world.py`
+- Create new items by adding to the appropriate collections in the items directory
+- Add new enemies in the `enemy_manager.py` file
+- Create new quests in the `_initialize_quests` method in `quest_manager.py`
