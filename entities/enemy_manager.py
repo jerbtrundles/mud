@@ -43,7 +43,30 @@ class EnemyManager:
                 "attack": 4, 
                 "experience": 5,
                 "allowed_rooms": ["entrance", "cavern"],
-                "respawn_delay": 30
+                "respawn_delay": 30,
+                "special_attacks": {
+                    "poison": {
+                        "chance": 0.3,  # 30% chance to poison on hit
+                        "duration": 30,  # Poison lasts 20 seconds
+                        "strength": 5,   # Normal strength
+                        "message": "The spider's fangs inject venom into your bloodstream!"
+                    }
+                }
+            },
+            "giant_spider": {
+                "health": 30, 
+                "attack": 6, 
+                "experience": 10,
+                "allowed_rooms": ["cavern", "hidden_grotto"],
+                "respawn_delay": 60,
+                "special_attacks": {
+                    "poison": {
+                        "chance": 0.4,   # 50% chance to poison 
+                        "duration": 60,  # Longer duration than spider poison
+                        "strength": 10,   # Stronger than spider poison
+                        "message": "The giant spider's potent venom burns through your veins!"
+                    }
+                }
             },
             "orc": {
                 "health": 35, 
@@ -230,13 +253,16 @@ class EnemyManager:
         
         # Create the enemy
         enemy_data = self.enemy_types[enemy_type]
+        special_attacks = enemy_data.get("special_attacks")
+
         enemy = Enemy(
             enemy_type,
             enemy_data["health"],
             enemy_data["attack"],
             enemy_data["experience"],
             enemy_data["allowed_rooms"],
-            enemy_data["respawn_delay"]
+            enemy_data["respawn_delay"],
+            special_attacks
         )
         
         # Override the current_room to ensure it spawns in the desired room
@@ -389,6 +415,23 @@ class EnemyManager:
                         damage = max(1, enemy.attack - game_state.player.defense_power())
                         game_state.player.take_damage(damage)
                         game_state.add_to_history(f"The {enemy.name} attacks you for {damage} damage!", game_state.COMBAT_COLOR)
+                        
+                        if hasattr(enemy, 'special_attacks') and enemy.special_attacks:
+                            for effect_name, effect_data in enemy.special_attacks.items():
+                                # Roll for effect chance
+                                if random.random() < effect_data.get("chance", 0):
+                                    # Create and apply the status effect
+                                    if effect_name == "poison":
+                                        from systems.status_effects import PoisonEffect
+                                        poison = PoisonEffect(
+                                            duration=effect_data.get("duration", 30),
+                                            strength=effect_data.get("strength", 1)
+                                        )
+                                        self.game_state.status_effect_manager.add_effect(poison)
+                                        
+                                        # Display the special attack message
+                                        if "message" in effect_data:
+                                            self.game_state.add_to_history(effect_data["message"], (0, 180, 0))
                         
                         # Check if player died
                         if game_state.player.health <= 0:

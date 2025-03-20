@@ -3,7 +3,7 @@ import random
 import time
 
 class Enemy:
-    def __init__(self, name, health, attack, experience, allowed_rooms, respawn_delay=60):
+    def __init__(self, name, health, attack, experience, allowed_rooms, respawn_delay=60, special_attacks=None):
         self.name = name
         self.health = health
         self.max_health = health
@@ -14,6 +14,7 @@ class Enemy:
         self.last_move_time = time.time()
         self.death_time = None
         self.respawn_delay = respawn_delay  # seconds until respawn after death
+        self.special_attacks = special_attacks or {}
     
     def take_damage(self, amount):
         self.health = max(0, self.health - amount)

@@ -7,6 +7,8 @@ from items.item_factory import ItemFactory
 from systems.crafting import CraftingSystem
 from core.utils import get_weather_description, get_environment_effect_description, dice_roll, calculate_chance, clamp
 from systems.journal import Journal
+from systems.bestiary import Bestiary
+from systems.status_effect_manager import StatusEffectManager
 
 # Colors for text
 TEXT_COLOR = (200, 200, 200)
@@ -29,7 +31,9 @@ class GameState:
         self.game_time = time.time()
         self.enemy_manager = None
         self.journal = Journal(self)
-        
+        self.bestiary = Bestiary(self)
+        self.status_effect_manager = StatusEffectManager(self)
+
         # Add public access to colors for enemy manager
         self.TITLE_COLOR = TITLE_COLOR
         self.ENEMY_COLOR = ENEMY_COLOR
@@ -472,6 +476,7 @@ class GameState:
                 if effect_desc:
                     self.add_to_history(f"- {effect_desc}")
 
+    # Modify the combat method in GameState to track bestiary data
     def combat(self, enemy):
         if not enemy.is_alive():
             return f"The {enemy.name} is already defeated."
@@ -548,8 +553,17 @@ class GameState:
             # Track combat in journal with victory
             self.journal.track_combat(enemy.name, total_damage_dealt, total_damage_taken, True)
             
+            # Update bestiary with this enemy defeat
+            self.bestiary.record_encounter(
+                enemy.name, 
+                killed=True, 
+                damage_dealt=total_damage_dealt, 
+                damage_taken=total_damage_taken, 
+                location=self.current_room
+            )
+            
             return None
-    
+        
         # Enemy counterattacks with environmental accuracy modifiers
         enemy_accuracy_mod = env_effects.get("enemy_accuracy", 0)
         
@@ -570,7 +584,25 @@ class GameState:
             
             self.add_to_history(f"The {enemy.name} counterattacks for {actual_damage} damage!", self.ENEMY_COLOR)
             self.add_to_history(f"Your health: {self.player.health}/{self.player.max_health}", self.HEALTH_COLOR)
-            
+
+            # NEW: Check for enemy special attacks (like poison)
+            if hasattr(enemy, 'special_attacks') and enemy.special_attacks:
+                for effect_name, effect_data in enemy.special_attacks.items():
+                    # Roll for effect chance
+                    if random.random() < effect_data.get("chance", 0):
+                        # Create and apply the status effect
+                        if effect_name == "poison":
+                            from systems.status_effects import PoisonEffect
+                            poison = PoisonEffect(
+                                duration=effect_data.get("duration", 30),
+                                strength=effect_data.get("strength", 1)
+                            )
+                            self.status_effect_manager.add_effect(poison)
+                            
+                            # Display the special attack message
+                            if "message" in effect_data:
+                                self.add_to_history(effect_data["message"], (0, 180, 0))
+
             # Add journal entry for significant damage
             if actual_damage > self.player.max_health // 4:  # More than 25% of max health
                 self.journal.add_entry(f"Took {actual_damage} damage from a {enemy.name}! Health critical!", "combat")
@@ -595,6 +627,15 @@ class GameState:
         else:
             # Track ongoing combat (not a victory or defeat yet)
             self.journal.track_combat(enemy.name, total_damage_dealt, total_damage_taken, None)
+            
+            # Update bestiary for the encounter (not killed)
+            self.bestiary.record_encounter(
+                enemy.name,
+                killed=False,
+                damage_dealt=total_damage_dealt, 
+                damage_taken=total_damage_taken,
+                location=self.current_room
+            )
             
         return f"The {enemy.name} has {enemy.health}/{enemy.max_health} health remaining."
 
@@ -705,23 +746,27 @@ class GameState:
         self.add_to_history(f"Defense: {self.player.defense_power()} (Base: {self.player.defense})")
         self.add_to_history(f"Coins: {self.coins}")
         
-        if self.player.weapon:
-            weapon = ItemFactory.get_item(self.player.weapon)
-            if weapon:
-                self.add_to_history(f"Weapon: {weapon.display_name()} (+{weapon.attack_bonus} attack)")
-            else:
-                self.add_to_history(f"Weapon: {self.player.weapon.replace('_', ' ')}")
+        # Show status effects if any are active
+        status_text = self.status_effect_manager.get_status_text()
+        if status_text:
+            self.add_to_history(f"Status Effects: {status_text}", (255, 165, 0))  # COMBAT_COLOR
+        
+        # Show all equipped items using the equipment slots
+        self.add_to_history("\nEquipment:", TITLE_COLOR)
+        
+        # Get list of all equipped items
+        equipment_list = self.player.get_equipment_list()
+        
+        if not equipment_list:
+            self.add_to_history("  Nothing equipped")
         else:
-            self.add_to_history("Weapon: None")
-            
-        if self.player.armor:
-            armor = ItemFactory.get_item(self.player.armor)
-            if armor:
-                self.add_to_history(f"Armor: {armor.display_name()} (+{armor.defense_bonus} defense)")
-            else:
-                self.add_to_history(f"Armor: {self.player.armor.replace('_', ' ')}")
-        else:
-            self.add_to_history("Armor: None")
+            for item in equipment_list:
+                self.add_to_history(f"  {item}")
+        
+        # Show combat stats summary
+        self.add_to_history(f"\nTotal Stats:")
+        self.add_to_history(f"  Attack: {self.player.attack_power()}")
+        self.add_to_history(f"  Defense: {self.player.defense_power()}")
     
     def show_help(self):
         self.add_to_history("Available Commands:", TITLE_COLOR)

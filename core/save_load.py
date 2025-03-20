@@ -68,8 +68,23 @@ def save_game(game_state, filename="savegame.json"):
             "regions": {},
             
             # Enemy data
-            "enemies": []
+            "enemies": [],
+            
+            # Status effects (new)
+            "status_effects": []
         }
+        
+        # Save status effects
+        if hasattr(game_state, 'status_effect_manager'):
+            for effect_name, effect in game_state.status_effect_manager.active_effects.items():
+                effect_data = {
+                    "name": effect.name,
+                    "duration": effect.duration,
+                    "strength": effect.strength,
+                    "start_time": effect.start_time,
+                    "remaining_time": effect.get_time_remaining()
+                }
+                save_data["status_effects"].append(effect_data)
         
         # Save room modifications (items added/removed, locks changed)
         for region_name, region in game_state.world.regions.items():
@@ -111,11 +126,19 @@ def save_game(game_state, filename="savegame.json"):
                     "death_time": enemy.death_time,
                     "respawn_delay": enemy.respawn_delay
                 }
+                
+                # Save special attacks if present
+                if hasattr(enemy, 'special_attacks') and enemy.special_attacks:
+                    enemy_data["special_attacks"] = enemy.special_attacks
+                    
                 save_data["enemies"].append(enemy_data)
         
         # Save game history (last 20 messages)
         save_data["history"] = game_state.game_history[-20:] if len(game_state.game_history) > 20 else game_state.game_history
         save_data["journal"] = game_state.journal.save_to_dict()
+        
+        # Save bestiary data
+        save_data["bestiary"] = game_state.bestiary.save_to_dict()
 
         # Write the save file
         with open(filename, 'w') as f:
@@ -126,6 +149,7 @@ def save_game(game_state, filename="savegame.json"):
     except Exception as e:
         return f"Error saving game: {str(e)}"
 
+# Update load_game function to load status effects
 
 def load_game(game_state, filename="savegame.json"):
     """
@@ -187,6 +211,30 @@ def load_game(game_state, filename="savegame.json"):
         game_state.current_room = save_data["current_room"]
         game_state.coins = save_data["coins"]
         
+        # Load status effects
+        if "status_effects" in save_data and hasattr(game_state, 'status_effect_manager'):
+            # Clear existing effects first
+            game_state.status_effect_manager.active_effects = {}
+            
+            # Import needed status effect classes
+            from systems.status_effects import PoisonEffect
+            
+            for effect_data in save_data["status_effects"]:
+                # Create the appropriate effect based on type
+                if effect_data["name"] == "poison":
+                    effect = PoisonEffect(
+                        duration=effect_data["duration"],
+                        strength=effect_data["strength"]
+                    )
+                    # Adjust start time to maintain remaining duration
+                    current_time = time.time()
+                    remaining_time = effect_data.get("remaining_time", effect.duration)
+                    effect.start_time = current_time - (effect.duration - remaining_time)
+                    effect.last_tick_time = current_time  # Reset tick timer
+                    
+                    # Add to active effects
+                    game_state.status_effect_manager.active_effects[effect.name] = effect
+        
         # Load region data
         if "regions" in save_data:
             for region_name, region_data in save_data["regions"].items():
@@ -217,6 +265,7 @@ def load_game(game_state, filename="savegame.json"):
             # Load saved enemies
             from entities.enemy import Enemy
             for enemy_data in save_data["enemies"]:
+                # Create base enemy
                 enemy = Enemy(
                     name=enemy_data["name"],
                     health=enemy_data["max_health"],  # Initialize with max health
@@ -225,6 +274,10 @@ def load_game(game_state, filename="savegame.json"):
                     allowed_rooms=[enemy_data["current_room"]],  # Minimal allowed rooms
                     respawn_delay=enemy_data.get("respawn_delay", 60)  # Default if missing
                 )
+                
+                # Load special attacks if present
+                if "special_attacks" in enemy_data:
+                    enemy.special_attacks = enemy_data["special_attacks"]
                 
                 # Update specific enemy state
                 enemy.health = enemy_data["health"]
@@ -251,6 +304,10 @@ def load_game(game_state, filename="savegame.json"):
         
         if "journal" in save_data:
             game_state.journal.load_from_dict(save_data["journal"])
+            
+        # Load bestiary data if available
+        if "bestiary" in save_data:
+            game_state.bestiary.load_from_dict(save_data["bestiary"])
 
         # Add success message to history
         game_state.add_to_history("Game loaded successfully!")
@@ -267,7 +324,6 @@ def load_game(game_state, filename="savegame.json"):
         
     except Exception as e:
         return False, f"Error loading game: {str(e)}"
-
 
 def list_saves():
     """

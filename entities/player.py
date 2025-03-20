@@ -14,9 +14,17 @@ class Player:
         self.exp_to_next_level = 20
         
         # Equipment slots
-        self.weapon = None  # Equipped weapon name
-        self.armor = None   # Equipped armor name
-        
+        self.equipment = {
+            "head": None,
+            "chest": None,
+            "hands": None,
+            "legs": None,
+            "feet": None,
+            "neck": None,
+            "ring": None,
+            "weapon": None  # Move weapon into equipment dict for consistency
+        }
+
         # Temporary stat buffs
         self.temp_attack_bonus = 0
         self.temp_defense_bonus = 0
@@ -43,8 +51,8 @@ class Player:
         
         # Base attack + weapon bonus + temp buffs
         weapon_bonus = 0
-        if self.weapon:
-            weapon = ItemFactory.get_item(self.weapon)
+        if self.equipment["weapon"]:
+            weapon = ItemFactory.get_item(self.equipment["weapon"])
             if weapon:
                 weapon_bonus = weapon.get_attack_bonus()
                 
@@ -57,11 +65,13 @@ class Player:
         
         # Base defense + armor bonus + temp buffs
         armor_bonus = 0
-        if self.armor:
-            armor = ItemFactory.get_item(self.armor)
-            if armor:
-                armor_bonus = armor.get_defense_bonus()
-                
+
+        for slot, item_name in self.equipment.items():
+            if slot != "weapon" and item_name:  # Skip weapon slot
+                item = ItemFactory.get_item(item_name)
+                if item and hasattr(item, "get_defense_bonus"):
+                    armor_bonus += item.get_defense_bonus()
+                    
         return self.defense + armor_bonus + self.temp_defense_bonus
     
     def _update_temp_buffs(self):
@@ -90,23 +100,77 @@ class Player:
         self.exp_to_next_level = int(self.exp_to_next_level * 1.5)
         return self.level
     
-    def equip_weapon(self, weapon_name):
-        """Equip a weapon"""
-        weapon = ItemFactory.get_item(weapon_name)
-        if weapon and weapon.type == "weapon":
-            if weapon.meets_requirements(self):
-                self.weapon = weapon_name
-                return True
-        return False
+    def equip_item(self, item_name):
+        """Equip an item to the appropriate slot"""
+        item = ItemFactory.get_item(item_name)
+        
+        if not item:
+            return False, "Item not found."
+            
+        if not item.meets_requirements(self):
+            return False, f"You don't meet the requirements to equip the {item.display_name()}."
+        
+        if item.type == "weapon":
+            old_item = self.equipment["weapon"]
+            self.equipment["weapon"] = item_name
+            return True, old_item
+            
+        elif item.type == "armor":
+            if not hasattr(item, "slot"):
+                return False, f"The {item.display_name()} cannot be equipped."
+                
+            slot = item.slot
+            if slot not in self.equipment:
+                return False, f"Invalid equipment slot: {slot}"
+                
+            old_item = self.equipment[slot]
+            self.equipment[slot] = item_name
+            return True, old_item
+            
+        return False, f"You can't equip the {item.display_name()}."
+
+    def unequip_item(self, slot):
+        """Remove an item from an equipment slot"""
+        if slot not in self.equipment:
+            return False, f"Invalid equipment slot: {slot}"
+            
+        old_item = self.equipment[slot]
+        if not old_item:
+            return False, f"Nothing equipped in {slot} slot."
+            
+        self.equipment[slot] = None
+        return True, old_item
     
-    def equip_armor(self, armor_name):
-        """Equip armor"""
-        armor = ItemFactory.get_item(armor_name)
-        if armor and armor.type == "armor":
-            if armor.meets_requirements(self):
-                self.armor = armor_name
-                return True
-        return False
+    # Add a method to get equipped item in a slot
+    def get_equipped_item(self, slot):
+        """Get the item equipped in a specific slot"""
+        if slot not in self.equipment:
+            return None
+            
+        item_name = self.equipment[slot]
+        if not item_name:
+            return None
+            
+        return ItemFactory.get_item(item_name)
+
+    def get_equipment_list(self):
+        """Get a formatted list of all equipped items"""
+        equipped_items = []
+        
+        for slot, item_name in self.equipment.items():
+            if item_name:
+                item = ItemFactory.get_item(item_name)
+                if item:
+                    slot_name = item.get_slot_name() if hasattr(item, "get_slot_name") else slot.capitalize()
+                    
+                    if slot == "weapon":
+                        equipped_items.append(f"{slot_name}: {item.display_name()} (+{item.attack_bonus} ATK)")
+                    elif hasattr(item, "defense_bonus"):
+                        equipped_items.append(f"{slot_name}: {item.display_name()} (+{item.defense_bonus} DEF)")
+                    else:
+                        equipped_items.append(f"{slot_name}: {item.display_name()}")
+                        
+        return equipped_items
     
     def add_to_inventory(self, item_name, quantity=1):
         """Add an item to inventory"""

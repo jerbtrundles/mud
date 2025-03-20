@@ -52,6 +52,7 @@ class CraftingSystem:
                 "reinforced_leather_armor", 
                 "Leather armor reinforced with gemstones, offering improved protection.",
                 defense_bonus=5,
+                slot="chest",  # Add the slot parameter
                 value=25,
                 aliases=["reinforced leather", "gem leather", "reinforced armor"]
             )

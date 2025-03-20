@@ -3,6 +3,8 @@ import os
 import random
 import textwrap
 
+from items.item_factory import ItemFactory
+
 class CommandParser:
     def __init__(self, game_state):
         self.game_state = game_state
@@ -45,6 +47,9 @@ class CommandParser:
             "js": "journal_stats",
             "ja": "journal_achievements",
             "jc": "journal_combat",
+            "b": "bestiary",
+            "creatures": "bestiary_list",
+            "monster": "examine_creature",
         }
         
         # Command definitions with handlers and help text
@@ -129,6 +134,19 @@ class CommandParser:
                 "syntax": "equip [item]",
                 "args": ["item"],
                 "category": "combat"
+            },
+            "unequip": {
+                "handler": self._cmd_unequip,
+                "help": "Unequip an item from a specific slot",
+                "syntax": "unequip [slot]",
+                "args": ["slot"],
+                "category": "combat"
+            },
+            "equipment": {
+                "handler": self._cmd_equipment,
+                "help": "Show your equipped items",
+                "syntax": "equipment",
+                "category": "player"
             },
             "attack": {
                 "handler": self._cmd_attack,
@@ -413,6 +431,27 @@ class CommandParser:
                 "args": ["region_name", "text"],
                 "category": "journal"
             },
+            "bestiary": {
+                "handler": self._cmd_bestiary,
+                "help": "View your bestiary of encountered creatures",
+                "syntax": "bestiary [creature_name]",
+                "args": ["creature_name"],
+                "optional_args": True,
+                "category": "player"
+            },
+            "bestiary_list": {
+                "handler": self._cmd_bestiary_list,
+                "help": "List all creatures in your bestiary",
+                "syntax": "bestiary list",
+                "category": "player"
+            },
+            "examine_creature": {
+                "handler": self._cmd_examine_creature,
+                "help": "Examine a creature in detail",
+                "syntax": "examine_creature [creature_name]",
+                "args": ["creature_name"],
+                "category": "player"
+            },
         }
 
     def parse(self, command_text):
@@ -507,13 +546,117 @@ class CommandParser:
             self.game_state.player.remove_from_inventory(item_name)
         self.game_state.add_to_history(message)
         return None
-    
+
     def _cmd_equip(self, args):
+        """Equip an item by name, supporting partial matches and aliases"""
         if not args:
             return "Equip what?"
         
-        item = " ".join(args)
-        self.game_state.equip(item)
+        # Convert to lowercase for case-insensitive matching
+        item_text = " ".join(args).lower()
+        
+        # Find the best matching item in inventory
+        item_name = self.game_state.player.find_item(item_text)
+        
+        # If not found or player doesn't have the item
+        if not item_name or not self.game_state.player.has_item(item_name):
+            return f"You don't have a {item_text}."
+        
+        item = ItemFactory.get_item(item_name)
+        if not item:
+            return f"You can't equip the {item_text}."
+        
+        # Try to equip the item
+        success, result = self.game_state.player.equip_item(item_name)
+        
+        if not success:
+            return result
+        
+        # Item was equipped successfully
+        slot_name = item.get_slot_name() if hasattr(item, "get_slot_name") else (
+            "Weapon" if item.type == "weapon" else "Unknown"
+        )
+        
+        self.game_state.add_to_history(f"You equip the {item.display_name()} as your {slot_name.lower()}.")
+        
+        # If an item was replaced, add it back to inventory
+        if result:
+            old_item = ItemFactory.get_item(result)
+            if old_item:
+                self.game_state.player.add_to_inventory(result)
+                self.game_state.add_to_history(f"You put the {old_item.display_name()} in your inventory.")
+        
+        # Show updated stats based on what was equipped
+        if item.type == "weapon":
+            self.game_state.add_to_history(f"Attack power increased to {self.game_state.player.attack_power()}.")
+        elif item.type == "armor":
+            self.game_state.add_to_history(f"Defense increased to {self.game_state.player.defense_power()}.")
+        
+        return None
+
+    # Add the new unequip command
+    def _cmd_unequip(self, args):
+        """Unequip an item from a specific slot"""
+        if not args:
+            return "Unequip what? Please specify a slot (head, chest, hands, legs, feet, neck, ring, weapon)."
+        
+        slot = args[0].lower()
+        
+        # Map common terms to slot names
+        slot_mapping = {
+            "helmet": "head",
+            "armor": "chest",
+            "gloves": "hands",
+            "gauntlets": "hands",
+            "leggings": "legs",
+            "greaves": "legs",
+            "boots": "feet",
+            "shoes": "feet",
+            "amulet": "neck",
+            "necklace": "neck",
+            "pendant": "neck",
+            "sword": "weapon",
+            "blade": "weapon"
+        }
+        
+        if slot in slot_mapping:
+            slot = slot_mapping[slot]
+        
+        success, result = self.game_state.player.unequip_item(slot)
+        
+        if not success:
+            return result
+        
+        # Item was unequipped successfully
+        item = ItemFactory.get_item(result)
+        if item:
+            self.game_state.player.add_to_inventory(result)
+            self.game_state.add_to_history(f"You unequip the {item.display_name()} and put it in your inventory.")
+            
+            # Show updated defense if armor was unequipped
+            if item.type == "armor":
+                self.game_state.add_to_history(f"Defense decreased to {self.game_state.player.defense_power()}.")
+            elif slot == "weapon":
+                self.game_state.add_to_history(f"Attack power decreased to {self.game_state.player.attack_power()}.")
+        
+        return None
+
+    # Add the equipment command
+    def _cmd_equipment(self, args):
+        """Display all equipped items"""
+        equipment_list = self.game_state.player.get_equipment_list()
+        
+        if not equipment_list:
+            self.game_state.add_to_history("You have nothing equipped.")
+        else:
+            self.game_state.add_to_history("Current Equipment:", self.game_state.TITLE_COLOR)
+            for item in equipment_list:
+                self.game_state.add_to_history(f"  {item}")
+            
+            self.game_state.add_to_history(f"\nTotal Stats:")
+            self.game_state.add_to_history(f"  Attack: {self.game_state.player.attack_power()}")
+            self.game_state.add_to_history(f"  Defense: {self.game_state.player.defense_power()}")
+        
         return None
     
     def _cmd_attack(self, args):
@@ -527,7 +670,23 @@ class CommandParser:
         return f"There is no {target} here to attack."
     
     def _cmd_status(self, args):
-        self.game_state.show_status()
+        self.game_state.add_to_history("Player Status:", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history(f"Health: {self.game_state.player.health}/{self.game_state.player.max_health}", self.game_state.HEALTH_COLOR)
+        self.game_state.add_to_history(f"Level: {self.game_state.player.level} (EXP: {self.game_state.player.experience}/{self.game_state.player.exp_to_next_level})")
+        self.game_state.add_to_history(f"Attack: {self.game_state.player.attack_power()} (Base: {self.game_state.player.attack})")
+        self.game_state.add_to_history(f"Defense: {self.game_state.player.defense_power()} (Base: {self.game_state.player.defense})")
+        self.game_state.add_to_history(f"Coins: {self.game_state.coins}")
+        
+        # Show equipped items
+        self.game_state.add_to_history("\nEquipment:")
+        equipment_list = self.game_state.player.get_equipment_list()
+        
+        if not equipment_list:
+            self.game_state.add_to_history("  Nothing equipped")
+        else:
+            for item in equipment_list:
+                self.game_state.add_to_history(f"  {item}")
+        
         return None
     
     def _cmd_coins(self, args):
@@ -618,8 +777,9 @@ class CommandParser:
                 self.game_state.add_to_history(f"┃ Syntax: {cmd_info['syntax']}")
                 self.game_state.add_to_history(f"┃ Description: {cmd_info['help']}")
                 
-                # Show additional examples or details for specific commands
-                if cmd in ["save", "load", "saves", "saveslot", "loadslot", "deletesave", "autosave"]:
+                if cmd in ["use", "status"] and hasattr(self.game_state, 'status_effect_manager'):
+                    self._show_status_effects_help()
+                elif cmd in ["save", "load", "saves", "saveslot", "loadslot", "deletesave", "autosave"]:
                     self._show_detailed_save_help(cmd)
                 elif cmd == "repair":
                     self.game_state.add_to_history("\nRepairs damaged weapons and armor to full durability.")
@@ -649,7 +809,7 @@ class CommandParser:
                 if cmd_aliases:
                     self.game_state.add_to_history(f"┃ Aliases: {', '.join(cmd_aliases)}")
                 
-                self.game_state.add_to_history(f"┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛")
+                self.game_state.add_to_history(f"┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛")
             else:
                 self.game_state.add_to_history(f"No help available for '{cmd}'.")
         else:
@@ -698,6 +858,10 @@ class CommandParser:
                         command_display = cmd if len(cmd) <= 15 else cmd[:12] + "..."
                         self.game_state.add_to_history(display_format.format(command_display, help_text))
             
+            # Add info about status effects if they're implemented
+            if hasattr(self.game_state, 'status_effect_manager'):
+                self._show_status_effects_help()
+            
             # Add quick tips at the end
             self.game_state.add_to_history("\n┏━━━ QUICK TIPS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓", self.game_state.TITLE_COLOR)
             self.game_state.add_to_history("┃ • Direction shortcuts: n, s, e, w                ┃")
@@ -708,6 +872,7 @@ class CommandParser:
             self.game_state.add_to_history("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛", self.game_state.TITLE_COLOR)
         
         return None
+
     
     def _cmd_commands(self, args):
         """Display a compact list of all available commands"""
@@ -1858,3 +2023,164 @@ class CommandParser:
                 self.game_state.add_to_history(f"  Damage Dealt: {enemy['damage_dealt']}, Damage Taken: {enemy['damage_taken']}")
         
         return None
+
+    def _cmd_bestiary(self, args):
+        """Show bestiary entries"""
+        if not args:
+            # Show general bestiary info
+            discovered = self.game_state.bestiary.get_discovered_enemies()
+            
+            if not discovered:
+                self.game_state.add_to_history("Your bestiary is empty. Encounter creatures to add entries.")
+                return None
+                
+            self.game_state.add_to_history("BESTIARY", self.game_state.TITLE_COLOR)
+            self.game_state.add_to_history(f"You have recorded {len(discovered)} different creatures.")
+            self.game_state.add_to_history("Use 'bestiary [creature_name]' to view details about a specific creature.")
+            self.game_state.add_to_history("Use 'bestiary list' to see all recorded creatures.")
+            
+            # Show a few recent discoveries
+            if discovered:
+                self.game_state.add_to_history("\nRecent discoveries:", self.game_state.TITLE_COLOR)
+                for creature in discovered[-3:]:  # Show last 3
+                    entry = self.game_state.bestiary.get_entry(creature)
+                    if entry:
+                        self.game_state.add_to_history(f"• {creature.capitalize()} - Encountered {entry.encounters} times")
+        else:
+            # Show specific creature info
+            creature_name = args[0].lower()
+            
+            # Handle "list" as a special case
+            if creature_name == "list":
+                return self._cmd_bestiary_list([])
+                
+            # Try to find the creature
+            entry = None
+            for enemy_name in self.game_state.bestiary.get_discovered_enemies():
+                if creature_name in enemy_name:
+                    entry = self.game_state.bestiary.get_entry(enemy_name)
+                    creature_name = enemy_name
+                    break
+                    
+            if not entry:
+                self.game_state.add_to_history(f"You haven't encountered any creature matching '{creature_name}' yet.")
+                return None
+                
+            # Show creature details
+            self._display_creature_entry(creature_name, entry)
+            
+        return None
+
+    def _cmd_bestiary_list(self, args):
+        """List all creatures in the bestiary"""
+        discovered = self.game_state.bestiary.get_discovered_enemies()
+        
+        if not discovered:
+            self.game_state.add_to_history("Your bestiary is empty. Encounter creatures to add entries.")
+            return None
+            
+        self.game_state.add_to_history("BESTIARY ENTRIES", self.game_state.TITLE_COLOR)
+        
+        # Group by creature type
+        creatures_by_type = {}
+        
+        for creature_name in discovered:
+            details = self.game_state.bestiary.get_enemy_details(creature_name)
+            creature_type = details.get("type", "Unknown") if details else "Unknown"
+            
+            if creature_type not in creatures_by_type:
+                creatures_by_type[creature_type] = []
+                
+            creatures_by_type[creature_type].append(creature_name)
+        
+        # Display by type
+        for creature_type, creatures in sorted(creatures_by_type.items()):
+            self.game_state.add_to_history(f"\n{creature_type}:", self.game_state.TITLE_COLOR)
+            
+            for creature_name in sorted(creatures):
+                entry = self.game_state.bestiary.get_entry(creature_name)
+                stats = entry.get_stats()
+                
+                # Format display with some basic stats
+                self.game_state.add_to_history(
+                    f"• {creature_name.capitalize()} - "
+                    f"Encountered: {stats['encounters']}, "
+                    f"Defeated: {stats['kills']}"
+                )
+        
+        self.game_state.add_to_history("\nUse 'bestiary [creature_name]' to view details about a specific creature.")
+        return None
+
+    def _cmd_examine_creature(self, args):
+        """Examine a creature in detail (alias for bestiary command)"""
+        if not args:
+            self.game_state.add_to_history("Examine which creature?")
+            return None
+            
+        return self._cmd_bestiary(args)
+
+    def _display_creature_entry(self, creature_name, entry):
+        """Display detailed information about a creature entry"""
+        stats = entry.get_stats()
+        details = self.game_state.bestiary.get_enemy_details(creature_name)
+        
+        # Header
+        self.game_state.add_to_history(f"BESTIARY: {creature_name.upper()}", self.game_state.TITLE_COLOR)
+        
+        # Classification
+        if details:
+            creature_type = details.get("type", "Unknown")
+            difficulty = details.get("difficulty", "Unknown")
+            self.game_state.add_to_history(f"Type: {creature_type} | Difficulty: {difficulty}")
+        
+        # Description
+        description = self.game_state.bestiary.get_enemy_description(creature_name)
+        self.game_state.add_to_history(f"\nDescription: {description}")
+        
+        # Combat statistics
+        self.game_state.add_to_history("\nCombat Record:", self.game_state.COMBAT_COLOR)
+        self.game_state.add_to_history(f"• Encounters: {stats['encounters']}")
+        self.game_state.add_to_history(f"• Defeated: {stats['kills']} ({stats['kill_ratio']})")
+        self.game_state.add_to_history(f"• Total Damage Dealt: {stats['damage_dealt']}")
+        self.game_state.add_to_history(f"• Total Damage Taken: {stats['damage_taken']}")
+        self.game_state.add_to_history(f"• Average Damage Per Encounter: {stats['avg_damage_per_encounter']:.1f}")
+        
+        # Last encounter location
+        if stats['last_seen']:
+            location = stats['last_seen'].replace('_', ' ').title()
+            self.game_state.add_to_history(f"\nLast seen in: {location}")
+        
+        # Additional details from bestiary
+        if details:
+            # Habitat
+            if "habitat" in details:
+                self.game_state.add_to_history(f"\nHabitat: {details['habitat']}")
+            
+            # Weaknesses/resistances
+            if "weakness" in details and details["weakness"] != "None":
+                self.game_state.add_to_history(f"Weakness: {details['weakness']}")
+            
+            # Common drops
+            if "common_drops" in details:
+                drops = ", ".join(details["common_drops"])
+                self.game_state.add_to_history(f"\nCommon Drops: {drops}")
+            
+            # Rare drops
+            if "rare_drops" in details:
+                drops = ", ".join(details["rare_drops"])
+                self.game_state.add_to_history(f"Rare Drops: {drops}")
+
+    def _show_status_effects_help(self):
+        """Display help information about status effects"""
+        self.game_state.add_to_history("\n┏━━━ STATUS EFFECTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("┃ Status effects are temporary conditions that     ┃")
+        self.game_state.add_to_history("┃ affect your character in various ways.           ┃")
+        self.game_state.add_to_history("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛", self.game_state.TITLE_COLOR)
+        
+        self.game_state.add_to_history("Current status effects:", (0, 180, 0))
+        
+        # List known status effects
+        self.game_state.add_to_history("• ☠ Poison: Causes damage over time. Cure with antidote or strong healing potion.", (0, 180, 0))
+        
+        self.game_state.add_to_history("\nCheck your current status effects with the 'status' command.")
+        self.game_state.add_to_history("Active effects are shown at the bottom of the screen.")

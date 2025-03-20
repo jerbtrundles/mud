@@ -97,6 +97,8 @@ class GameLoop:
 
             # Update regions
             self.world.update_regions(self.game_state)
+
+            self.game_state.status_effect_manager.update()
             
             # Check for ambient environmental messages
             current_region = self.world.get_region_for_room(self.game_state.current_room)
@@ -209,7 +211,14 @@ class GameLoop:
             health_surface = self.font.render(health_text, True, GameConfig.HEALTH_COLOR)
             self.screen.blit(health_surface, (GameConfig.SCREEN_WIDTH - GameConfig.MARGIN - health_surface.get_width(), 
                              GameConfig.SCREEN_HEIGHT - GameConfig.MARGIN - GameConfig.FONT_SIZE))
-            
+
+            # Display status effects (new)
+            status_text = self.game_state.status_effect_manager.get_status_text()
+            if status_text:
+                status_surface = self.font.render(status_text, True, (255, 165, 0))  # COMBAT_COLOR
+                self.screen.blit(status_surface, (GameConfig.MARGIN, 
+                                GameConfig.SCREEN_HEIGHT - GameConfig.MARGIN*2 - GameConfig.FONT_SIZE*2))
+
             # Display scroll indicator if scrolled up
             if self.scroll_offset > 0:
                 scroll_text = f"[SCROLLED UP: PgUp/PgDn or Mouse Wheel to navigate]"

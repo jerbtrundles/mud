@@ -99,13 +99,16 @@ class GameWorld:
         goblin_territory.add_room("goblin_den", {
             "description": "A foul-smelling chamber littered with bones and crude weapons. This appears to be where the goblins make their home.",
             "exits": {"south": "cavern"},
-            "items": ["steel_sword", "healing_potion", "bread", "rare_box_key"]  # Added rare_box_key
+            "items": ["steel_sword", "healing_potion", "bread", "rare_box_key"]
         })
         
         goblin_territory.add_room("treasure_room", {
             "description": "A small chamber filled with the remnants of an ancient civilization. Gold coins are scattered about, and gems glitter in the light.",
             "exits": {"south": "narrow_passage"},
-            "items": ["gem", "ruby", "emerald", "golden_crown", "ancient_scroll", "ancient_blade", "rare_treasure_box"],  # Added rare_treasure_box
+            "items": [
+                "gem", "ruby", "emerald", "golden_crown", "ancient_scroll", 
+                "ancient_blade", "rare_treasure_box", "protection_amulet", "vampire_ring"
+            ],
             "locked": True,
             "key_item": "ancient_key"
         })
@@ -119,19 +122,29 @@ class GameWorld:
             "items": [],
             "is_shop": True,
             "shop_inventory": {
+                # Consumables
                 "healing_potion": {"price": 5, "description": "Restores 20 health points."},
                 "strong_healing_potion": {"price": 15, "description": "Restores 50 health points."},
-                "leather_armor": {"price": 15, "description": "Provides +3 defense."},
-                "chainmail": {"price": 30, "description": "Provides +6 defense."},
-                "steel_sword": {"price": 25, "description": "Provides +10 attack."},
-                "ancient_blade": {"price": 50, "description": "Provides +15 attack."},
-                "plate_armor": {"price": 45, "description": "Provides +10 defense."},
                 "stamina_potion": {"price": 10, "description": "Temporarily increases attack power."},
+                
+                # Basic armor pieces
+                "leather_cap": {"price": 5, "description": "A simple leather cap offering minimal protection."},
+                "leather_armor": {"price": 15, "description": "Simple leather armor offering basic protection."},
+                "leather_gloves": {"price": 5, "description": "Simple leather gloves that provide minimal protection."},
+                "leather_leggings": {"price": 10, "description": "Simple leather pants that provide basic protection."},
+                "leather_boots": {"price": 8, "description": "Simple leather boots that provide basic foot protection."},
+                
+                # Basic weapons
+                "rusty_sword": {"price": 7, "description": "An old, rusty sword. It's seen better days but still cuts."},
+                
+                # Tools
+                "torch": {"price": 2, "description": "A wooden torch that can be lit to illuminate dark areas."},
                 "pickaxe": {"price": 8, "description": "A tool for mining gems."},
                 "stick": {"price": 1, "description": "A simple wooden stick."},
                 "cloth": {"price": 1, "description": "A piece of cloth."},
+                
+                # Keys
                 "common_box_key": {"price": 8, "description": "A simple key that opens common treasure boxes."},
-                "uncommon_box_key": {"price": 20, "description": "A bronze key that opens uncommon treasure boxes."}
             }
         })
 
@@ -175,17 +188,36 @@ class GameWorld:
             "is_repair": True,  # Flag for repair functionality
             "repair_cost_multiplier": 0.3,  # 30% of item value to repair
             "shop_inventory": {
+                # Intermediate weapons
                 "steel_sword": {"price": 22, "description": "A well-crafted steel sword, sharp and reliable."},
+                
+                # Advanced weapons
+                "ancient_blade": {"price": 50, "description": "A mysterious blade of unknown origin. It seems to hum with power."},
+                
+                # Intermediate armor
+                "iron_helmet": {"price": 15, "description": "A solid iron helmet that protects your head from blows."},
                 "chainmail": {"price": 28, "description": "A shirt of interlocking metal rings providing good protection."},
+                "chainmail_gauntlets": {"price": 12, "description": "Gauntlets made of fine chainmail that protect your hands and wrists."},
+                "chainmail_leggings": {"price": 22, "description": "Leggings crafted from interwoven metal rings."},
+                "chain_boots": {"price": 18, "description": "Boots reinforced with chainmail for added protection."},
+                
+                # Advanced armor
                 "plate_armor": {"price": 40, "description": "Heavy plate armor offering superior protection."},
-                "pickaxe": {"price": 7, "description": "A sturdy pickaxe for mining."}
+                "plate_gauntlets": {"price": 25, "description": "Heavy metal gauntlets that offer excellent protection for your hands."},
+                "plate_greaves": {"price": 35, "description": "Heavy metal plates that protect your legs from serious damage."},
+                "plate_boots": {"price": 28, "description": "Heavy boots made of solid metal plates."},
+                
+                # Tools
+                "pickaxe": {"price": 7, "description": "A sturdy pickaxe for mining."},
             },
             "smith_dialogue": [
                 "The blacksmith looks up from his work. 'Need something forged or repaired?'",
                 "'Quality metal is hard to come by these days.'",
                 "'That armor you're wearing could use some work. I can fix it up for you.'",
                 "'Careful with that blade. Even the finest steel can break if mistreated.'",
-                "'Found some interesting ore near the hidden grotto. Makes for excellent weapons.'"
+                "'Found some interesting ore near the hidden grotto. Makes for excellent weapons.'",
+                "'A full set of plate armor will keep you safer than mismatched pieces.'",
+                "'Each piece of armor counts. Don't neglect your helmet and boots!'"
             ]
         })
 
@@ -206,27 +238,42 @@ class GameWorld:
             ]
         })
 
-        # Alchemist - for potions and special items
         town.add_room("alchemist", {
             "description": "The alchemist's shop is filled with bubbling concoctions and strange aromas. Colorful bottles line the shelves, and dried herbs hang from the ceiling. A slender elf carefully measures ingredients at a workbench covered with arcane tools and mysterious substances.",
             "exits": {"west": "town_square", "north": "garden"},
             "items": [],
             "is_shop": True,
             "shop_inventory": {
+                # Potions
                 "healing_potion": {"price": 5, "description": "A red potion that restores health."},
                 "strong_healing_potion": {"price": 12, "description": "A vibrant red potion that restores significant health."},
                 "stamina_potion": {"price": 8, "description": "A green potion that temporarily increases attack power."},
-                "antidote": {"price": 7, "description": "A blue potion that cures poison and disease."},
-                "elixir_of_clarity": {"price": 15, "description": "A purple potion that enhances perception and reflexes."}
+                "antidote": {"price": 8, "description": "A green potion that neutralizes poison."},
+                "elixir_of_clarity": {"price": 15, "description": "A purple potion that enhances perception and reflexes."},
+                
+                # Magical armor and accessories
+                "enchanted_circlet": {"price": 30, "description": "A silver circlet with a glowing blue gem that enhances mental focus."},
+                "thief_gloves": {"price": 20, "description": "Lightweight gloves made of supple leather that improve dexterity."},
+                "explorer_boots": {"price": 35, "description": "Enchanted boots that make walking easier and reduce fatigue."},
+                
+                # Jewelry
+                "basic_amulet": {"price": 10, "description": "A simple amulet with a small protective enchantment."},
+                "healing_amulet": {"price": 30, "description": "A ruby amulet that slowly regenerates health over time."},
+                "simple_ring": {"price": 5, "description": "A plain metal ring with a minor enchantment."},
+                "strength_ring": {"price": 25, "description": "A ring that enhances the wearer's physical strength."},
+                "mage_ring": {"price": 35, "description": "A sapphire ring that enhances magical abilities."}
             },
             "alchemist_dialogue": [
                 "The alchemist looks up from her work. 'Ah, a customer! Interested in my potions?'",
                 "'Each potion is crafted with utmost care and the finest ingredients.'",
                 "'That mushroom you passed by might be more valuable than you think.'",
                 "'I'm working on a new formula. Just need a few rare ingredients from the deeper caves.'",
-                "'Careful with mixing potions. The results can be... unpredictable.'"
+                "'Careful with mixing potions. The results can be... unpredictable.'",
+                "'My enchanted circlets improve focus and mental clarity.'",
+                "'These rings may look simple, but they hold powerful enchantments.'"
             ]
         })
+
 
         # Herb Garden - for ingredient gathering
         town.add_room("garden", {

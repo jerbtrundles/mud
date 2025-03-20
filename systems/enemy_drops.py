@@ -54,6 +54,13 @@ def get_enemy_drops(enemy_name, enemy_health_percentage, player_level):
         "spider": {
             "common_treasure_box": 0.08,
             "common_box_key": 0.12,
+            "antidote": 0.2,
+            "gold": (1, 8)
+        },
+        "giant spider": {
+            "uncommon_treasure_box": 0.12,
+            "uncommon_box_key": 0.18,
+            "antidote": 0.2,
             "gold": (1, 8)
         },
         "ghost": {
