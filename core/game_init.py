@@ -4,7 +4,7 @@ import pygame
 from entities.player import Player
 from core.game_state import GameState
 from world.world import GameWorld
-from entities.enemy_manager import EnemyManager
+from entities.regional_enemy_manager import RegionalEnemyManager
 from core.command_parser import CommandParser
 
 def initialize_items():
@@ -39,7 +39,7 @@ def initialize_game():
     command_parser = CommandParser(game_state)
     
     # Create enemy manager
-    enemy_manager = EnemyManager(world)
+    enemy_manager = RegionalEnemyManager(world)
     enemy_manager.set_game_state(game_state)
     game_state.set_enemy_manager(enemy_manager)
     

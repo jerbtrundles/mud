@@ -47,8 +47,8 @@ def save_game(game_state, filename="savegame.json"):
                 "level": game_state.player.level,
                 "experience": game_state.player.experience,
                 "exp_to_next_level": game_state.player.exp_to_next_level,
-                "weapon": game_state.player.weapon,
-                "armor": game_state.player.armor,
+                # Save the full equipment dictionary instead of just weapon/armor
+                "equipment": game_state.player.equipment,
                 "inventory": game_state.player.inventory,
                 "temp_attack_bonus": game_state.player.temp_attack_bonus,
                 "temp_defense_bonus": game_state.player.temp_defense_bonus,
@@ -149,8 +149,6 @@ def save_game(game_state, filename="savegame.json"):
     except Exception as e:
         return f"Error saving game: {str(e)}"
 
-# Update load_game function to load status effects
-
 def load_game(game_state, filename="savegame.json"):
     """
     Load game from a save file
@@ -195,9 +193,33 @@ def load_game(game_state, filename="savegame.json"):
         game_state.player.level = player_data["level"]
         game_state.player.experience = player_data["experience"]
         game_state.player.exp_to_next_level = player_data["exp_to_next_level"]
-        game_state.player.weapon = player_data["weapon"]
-        game_state.player.armor = player_data["armor"]
         game_state.player.inventory = player_data["inventory"]
+        
+        # Check if we have the newer equipment dictionary format
+        if "equipment" in player_data:
+            # New format with equipment slots
+            game_state.player.equipment = player_data["equipment"]
+        else:
+            # Legacy format with separate weapon/armor
+            # Initialize an empty equipment dictionary with slots
+            game_state.player.equipment = {
+                "head": None,
+                "chest": None,
+                "hands": None,
+                "legs": None,
+                "feet": None,
+                "neck": None,
+                "ring": None,
+                "weapon": None
+            }
+            
+            # Set weapon and armor from old format if they exist
+            if "weapon" in player_data and player_data["weapon"]:
+                game_state.player.equipment["weapon"] = player_data["weapon"]
+                
+            if "armor" in player_data and player_data["armor"]:
+                # In the old format, armor was just a single item, assign it to the chest slot
+                game_state.player.equipment["chest"] = player_data["armor"]
         
         # Load temp buffs if they exist in the save
         if "temp_attack_bonus" in player_data:
@@ -217,7 +239,7 @@ def load_game(game_state, filename="savegame.json"):
             game_state.status_effect_manager.active_effects = {}
             
             # Import needed status effect classes
-            from systems.status_effects import PoisonEffect
+            from systems.status_effects.status_effects import PoisonEffect
             
             for effect_data in save_data["status_effects"]:
                 # Create the appropriate effect based on type

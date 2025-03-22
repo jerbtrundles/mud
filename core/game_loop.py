@@ -1,12 +1,13 @@
-# game_loop.py
+# Modified game_loop.py with intro screen and game over handling
 import pygame
 import sys
 import time
 import os
 from config.config import GameConfig
-from core.save_load import save_game
+from core.save_load import save_game, load_game
 from config.autosave import AutosaveSettings
 from core.utils import get_timestamp, ensure_dir_exists, format_time_delta
+from intro_screen import IntroScreen, show_game_over_screen
 
 class GameLoop:
     def __init__(self, game_state, command_parser, enemy_manager, world):
@@ -85,9 +86,24 @@ class GameLoop:
     
     def run(self):
         """Run the main game loop"""
-        # Look at the initial room to start the game
-        self.game_state.look()
+        # Show the intro screen first
+        intro_screen = IntroScreen(self.screen, self)
+        action, save_file = intro_screen.show()
         
+        # Handle intro screen results
+        if action == "quit":
+            pygame.quit()
+            sys.exit()
+        elif action == "load" and save_file:
+            # Load the selected save
+            success, message = load_game(self.game_state, save_file)
+            if not success:
+                self.game_state.add_to_history(message)
+        elif action == "new":
+            # Start a new game - look at the initial room
+            self.game_state.look()
+        
+        # Main game loop
         while True:
             current_time = time.time()
             self.screen.fill(GameConfig.BG_COLOR)
@@ -161,10 +177,34 @@ class GameLoop:
             pygame.display.flip()
             self.clock.tick(30)
             
+            # Handle game over state
             if self.game_state.game_over:
-                pygame.time.wait(3000)  # Wait 3 seconds before quitting
-                pygame.quit()
-                sys.exit()
+                # Show game over screen
+                game_over_reason = "You have been defeated!"
+                for line, _ in reversed(self.game_state.game_history):
+                    if "defeated" in line:
+                        game_over_reason = line
+                        break
+                
+                # Wait a moment to show the death message
+                pygame.time.wait(1500)
+                
+                # Show game over screen
+                action = show_game_over_screen(self.screen, game_over_reason)
+                
+                if action == "menu":
+                    # Return to main menu
+                    return self.restart_game()
+                else:
+                    # Quit game
+                    pygame.quit()
+                    sys.exit()
+    
+    def restart_game(self):
+        """Restart the game by returning to the main menu"""
+        # We'll just return from the run method, which will result in a new game if called from main.py
+        # The game initialization in main.py will create a new game state
+        return
     
     def render_game_history(self):
         """Render the game history text with scrolling"""
@@ -206,21 +246,39 @@ class GameLoop:
             input_surface = self.font.render(input_text, True, GameConfig.INPUT_COLOR)
             self.screen.blit(input_surface, (GameConfig.MARGIN, GameConfig.SCREEN_HEIGHT - GameConfig.MARGIN - GameConfig.FONT_SIZE))
             
-            # Display health bar and level
-            health_text = f"HP: {self.game_state.player.health}/{self.game_state.player.max_health} | LVL: {self.game_state.player.level}"
+            # Display health and level with expanded info
+            health_text = f"HP: {self.game_state.player.health}/{self.game_state.player.max_health}"
             health_surface = self.font.render(health_text, True, GameConfig.HEALTH_COLOR)
+            
+            # Add XP progress info
+            xp_text = f"LVL: {self.game_state.player.level} | XP: {self.game_state.player.experience}/{self.game_state.player.exp_to_next_level}"
+            xp_surface = self.font.render(xp_text, True, (180, 180, 255))  # Light blue for XP
+            
+            # Position the health and XP text at the right side
             self.screen.blit(health_surface, (GameConfig.SCREEN_WIDTH - GameConfig.MARGIN - health_surface.get_width(), 
-                             GameConfig.SCREEN_HEIGHT - GameConfig.MARGIN - GameConfig.FONT_SIZE))
-
-            # Display status effects (new)
-            status_text = self.game_state.status_effect_manager.get_status_text()
+                            GameConfig.SCREEN_HEIGHT - GameConfig.MARGIN - GameConfig.FONT_SIZE))
+            self.screen.blit(xp_surface, (GameConfig.SCREEN_WIDTH - GameConfig.MARGIN - xp_surface.get_width(), 
+                            GameConfig.SCREEN_HEIGHT - GameConfig.MARGIN - GameConfig.FONT_SIZE*2 - 2))
+            
+            # Display status effects as icons with remaining time
+            status_text = ""
+            if hasattr(self.game_state, 'status_effect_manager'):
+                # Get only the status icons without detailed text for a cleaner display
+                for effect_name, effect in self.game_state.status_effect_manager.active_effects.items():
+                    seconds_left = int(effect.get_time_remaining())
+                    if effect_name == "poison":
+                        status_text += f"{effect.icon} Poisoned ({seconds_left}s) "
+                    else:
+                        status_text += f"{effect.icon} {effect.display_name} ({seconds_left}s) "
+            
             if status_text:
-                status_surface = self.font.render(status_text, True, (255, 165, 0))  # COMBAT_COLOR
+                # Display status icons in a more visible position
+                status_surface = self.font.render(status_text, True, (0, 180, 0))  # Green for poison
                 self.screen.blit(status_surface, (GameConfig.MARGIN, 
-                                GameConfig.SCREEN_HEIGHT - GameConfig.MARGIN*2 - GameConfig.FONT_SIZE*2))
-
+                                GameConfig.SCREEN_HEIGHT - GameConfig.MARGIN - GameConfig.FONT_SIZE*2 - 2))
+            
             # Display scroll indicator if scrolled up
             if self.scroll_offset > 0:
                 scroll_text = f"[SCROLLED UP: PgUp/PgDn or Mouse Wheel to navigate]"
                 scroll_surface = self.font.render(scroll_text, True, (150, 150, 150))
-                self.screen.blit(scroll_surface, (GameConfig.MARGIN, GameConfig.SCREEN_HEIGHT - GameConfig.MARGIN - GameConfig.FONT_SIZE*2 - 5))
+                self.screen.blit(scroll_surface, (GameConfig.MARGIN, GameConfig.SCREEN_HEIGHT - GameConfig.MARGIN - GameConfig.FONT_SIZE*3 - 5))

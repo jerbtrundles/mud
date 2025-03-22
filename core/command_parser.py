@@ -14,6 +14,10 @@ class CommandParser:
             "s": "south",
             "e": "east",
             "w": "west",
+            "sw": "southwest",
+            "se": "southeast",
+            "nw": "northwest",
+            "ne": "northeast",
             # Command aliases
             "l": "look",
             "i": "inventory",
@@ -50,6 +54,7 @@ class CommandParser:
             "b": "bestiary",
             "creatures": "bestiary_list",
             "monster": "examine_creature",
+            "skill": "skills",
         }
         
         # Command definitions with handlers and help text
@@ -92,6 +97,34 @@ class CommandParser:
                 "handler": lambda args: self._cmd_go(["west"]),
                 "help": "Go west",
                 "syntax": "west",
+                "category": "movement",
+                "hidden": True
+            },
+            "northwest": {
+                "handler": lambda args: self._cmd_go(["northwest"]),
+                "help": "Go northwest",
+                "syntax": "northwest",
+                "category": "movement",
+                "hidden": True
+            },
+            "northeast": {
+                "handler": lambda args: self._cmd_go(["northeast"]),
+                "help": "Go northeast",
+                "syntax": "northeast",
+                "category": "movement",
+                "hidden": True
+            },
+            "southwest": {
+                "handler": lambda args: self._cmd_go(["southwest"]),
+                "help": "Go southwest",
+                "syntax": "southwest",
+                "category": "movement",
+                "hidden": True
+            },
+            "southeast": {
+                "handler": lambda args: self._cmd_go(["southeast"]),
+                "help": "Go southeast",
+                "syntax": "southeast",
                 "category": "movement",
                 "hidden": True
             },
@@ -452,6 +485,27 @@ class CommandParser:
                 "args": ["creature_name"],
                 "category": "player"
             },
+            "skills": {
+                "handler": self._cmd_skills,
+                "help": "Display a list of learned and available skills",
+                "syntax": "skills",
+                "category": "player"
+            },
+            "learn": {
+                "handler": self._cmd_learn,
+                "help": "Learn a new skill",
+                "syntax": "learn [skill_name]",
+                "args": ["skill_name"],
+                "category": "player"
+            },
+            "use_skill": {
+                "handler": self._cmd_use_skill,
+                "help": "Use a learned skill",
+                "syntax": "use_skill [skill_name]",
+                "args": ["skill_name"],
+                "category": "combat"
+            },
+
         }
 
     def parse(self, command_text):
@@ -773,9 +827,9 @@ class CommandParser:
                     
             if cmd in self.commands:
                 cmd_info = self.commands[cmd]
-                self.game_state.add_to_history(f"┏━━━ Command: {cmd} ━━━┓", self.game_state.TITLE_COLOR)
-                self.game_state.add_to_history(f"┃ Syntax: {cmd_info['syntax']}")
-                self.game_state.add_to_history(f"┃ Description: {cmd_info['help']}")
+                self.game_state.add_to_history(f"+------ Command: {cmd} ------+", self.game_state.TITLE_COLOR)
+                self.game_state.add_to_history(f"| Syntax: {cmd_info['syntax']}")
+                self.game_state.add_to_history(f"| Description: {cmd_info['help']}")
                 
                 if cmd in ["use", "status"] and hasattr(self.game_state, 'status_effect_manager'):
                     self._show_status_effects_help()
@@ -807,16 +861,16 @@ class CommandParser:
                 # Show aliases for this command
                 cmd_aliases = [alias for alias, target in self.aliases.items() if target == cmd]
                 if cmd_aliases:
-                    self.game_state.add_to_history(f"┃ Aliases: {', '.join(cmd_aliases)}")
+                    self.game_state.add_to_history(f"| Aliases: {', '.join(cmd_aliases)}")
                 
-                self.game_state.add_to_history(f"┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛")
+                self.game_state.add_to_history(f"+{'-' * (len(cmd) + 26)}+")
             else:
                 self.game_state.add_to_history(f"No help available for '{cmd}'.")
         else:
             # Show categorized help for all commands
-            self.game_state.add_to_history("┏━━━━━━━━━━━━━━━ MINIMUD HELP ━━━━━━━━━━━━━━━┓", self.game_state.TITLE_COLOR)
-            self.game_state.add_to_history("┃ Type 'help [command]' for detailed information ┃", self.game_state.TITLE_COLOR)
-            self.game_state.add_to_history("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛", self.game_state.TITLE_COLOR)
+            self.game_state.add_to_history("+-----------MINIMUD HELP------------+", self.game_state.TITLE_COLOR)
+            self.game_state.add_to_history("| Type 'help [command]' for details |", self.game_state.TITLE_COLOR)
+            self.game_state.add_to_history("+-----------------------------------+", self.game_state.TITLE_COLOR)
             
             # Define category order and descriptions
             categories = {
@@ -850,9 +904,12 @@ class CommandParser:
             # Display commands by category in the defined order
             for category in categories.keys():
                 if category in category_commands:
-                    self.game_state.add_to_history(f"\n┏━━━ {category.upper()} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓", self.game_state.TITLE_COLOR)
-                    self.game_state.add_to_history(f"┃ {categories[category]}", self.game_state.TITLE_COLOR)
-                    self.game_state.add_to_history(f"┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛", self.game_state.TITLE_COLOR)
+                    description = categories[category]
+                    description_length = len(description)
+                    category_length = len(category)
+                    self.game_state.add_to_history(f"\n+{'-' * (((description_length - category_length) // 2) + 1)} {category.upper()} {'-' * (((description_length - category_length) // 2) + 1)}+", self.game_state.TITLE_COLOR)
+                    self.game_state.add_to_history(f"| {description} |", self.game_state.TITLE_COLOR)
+                    self.game_state.add_to_history(f"+{'-' * (len(description) + 4)}+", self.game_state.TITLE_COLOR)
                     
                     for cmd, help_text, syntax in sorted(category_commands[category]):
                         command_display = cmd if len(cmd) <= 15 else cmd[:12] + "..."
@@ -863,20 +920,19 @@ class CommandParser:
                 self._show_status_effects_help()
             
             # Add quick tips at the end
-            self.game_state.add_to_history("\n┏━━━ QUICK TIPS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓", self.game_state.TITLE_COLOR)
-            self.game_state.add_to_history("┃ • Direction shortcuts: n, s, e, w                ┃")
-            self.game_state.add_to_history("┃ • Common shortcuts: l (look), i (inventory)      ┃")
-            self.game_state.add_to_history("┃ • Visit the town for shops, rest, and services   ┃")
-            self.game_state.add_to_history("┃ • Check 'quests' regularly for new objectives    ┃")
-            self.game_state.add_to_history("┃ • Use 'save' often to preserve your progress     ┃")
-            self.game_state.add_to_history("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛", self.game_state.TITLE_COLOR)
+            self.game_state.add_to_history("\n+------------------ QUICK TIPS ------------------+", self.game_state.TITLE_COLOR)
+            self.game_state.add_to_history("| • Direction shortcuts: n, s, e, w                |")
+            self.game_state.add_to_history("| • Common shortcuts: l (look), i (inventory)      |")
+            self.game_state.add_to_history("| • Visit the town for shops, rest, and services   |")
+            self.game_state.add_to_history("| • Check 'quests' regularly for new objectives    |")
+            self.game_state.add_to_history("| • Use 'save' often to preserve your progress     |")
+            self.game_state.add_to_history("+--------------------------------------------------+", self.game_state.TITLE_COLOR)
         
         return None
-
     
     def _cmd_commands(self, args):
         """Display a compact list of all available commands"""
-        self.game_state.add_to_history("┏━━━ AVAILABLE COMMANDS ━━━┓", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("+------ AVAILABLE COMMANDS ------+", self.game_state.TITLE_COLOR)
         
         # Group commands by category
         commands_by_category = {}
@@ -895,11 +951,11 @@ class CommandParser:
             command_list = ", ".join(sorted(cmds))
             wrapped_commands = textwrap.wrap(command_list, width=60)
             
-            self.game_state.add_to_history(f"┃ {category.upper()}: ", self.game_state.TITLE_COLOR)
+            self.game_state.add_to_history(f"| {category.upper()}: ", self.game_state.TITLE_COLOR)
             for line in wrapped_commands:
-                self.game_state.add_to_history(f"┃   {line}")
+                self.game_state.add_to_history(f"|   {line}")
         
-        self.game_state.add_to_history("┗━━━━━━━━━━━━━━━━━━━━━━━━━┛", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("+-------------------------------+", self.game_state.TITLE_COLOR)
         self.game_state.add_to_history("Type 'help [command]' for details on any command.")
         
         return None
@@ -1585,33 +1641,33 @@ class CommandParser:
     # Add a new tutorial command for new players
     def _cmd_tutorial(self, args):
         """Display a basic tutorial for new players"""
-        self.game_state.add_to_history("┏━━━━━━━━━━━━━━━ MINIMUD TUTORIAL ━━━━━━━━━━━━━━━┓", self.game_state.TITLE_COLOR)
-        self.game_state.add_to_history("┃ Welcome to MiniMUD! Here's how to get started:  ┃", self.game_state.TITLE_COLOR)
-        self.game_state.add_to_history("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("+--------------- MINIMUD TUTORIAL ---------------+", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("| Welcome to MiniMUD! Here's how to get started: |", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("+------------------------------------------------+", self.game_state.TITLE_COLOR)
         
         # Basic movement
-        self.game_state.add_to_history("\n┏━━━ MOVEMENT ━━━┓", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("\n+--- MOVEMENT ---+", self.game_state.TITLE_COLOR)
         self.game_state.add_to_history("• Type direction commands to move: north, south, east, west")
         self.game_state.add_to_history("• Shortcuts: n, s, e, w")
         self.game_state.add_to_history("• Example: 'north' or 'n' to go north")
         self.game_state.add_to_history("• Use 'look' or 'l' to see your surroundings")
         
         # Basic interaction
-        self.game_state.add_to_history("\n┏━━━ INTERACTION ━━━┓", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("\n+--- INTERACTION ---+", self.game_state.TITLE_COLOR)
         self.game_state.add_to_history("• Use 'take [item]' to pick up objects")
         self.game_state.add_to_history("• Use 'inventory' or 'i' to see what you're carrying")
         self.game_state.add_to_history("• Use 'examine [item]' to look at something in detail")
         self.game_state.add_to_history("• Use 'drop [item]' to discard unwanted items")
         
         # Combat
-        self.game_state.add_to_history("\n┏━━━ COMBAT ━━━┓", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("\n+--- COMBAT ---+", self.game_state.TITLE_COLOR)
         self.game_state.add_to_history("• Use 'attack [enemy]' or 'a [enemy]' to fight")
         self.game_state.add_to_history("• Equip weapons and armor with 'equip [item]'")
         self.game_state.add_to_history("• Use healing potions with 'use healing_potion'")
         self.game_state.add_to_history("• Check your stats with 'status' or 'stats'")
         
         # Town
-        self.game_state.add_to_history("\n┏━━━ TOWN SERVICES ━━━┓", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("\n+--- TOWN SERVICES ---+", self.game_state.TITLE_COLOR)
         self.game_state.add_to_history("• Shop: Buy/sell items with 'buy [item]' and 'sell [item]'")
         self.game_state.add_to_history("• Inn: Restore health with 'rest'")
         self.game_state.add_to_history("• Blacksmith: Repair equipment with 'repair [item]'")
@@ -1619,20 +1675,20 @@ class CommandParser:
         self.game_state.add_to_history("• Garden: Collect crafting ingredients with 'gather'")
         
         # Quests
-        self.game_state.add_to_history("\n┏━━━ QUESTS ━━━┓", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("\n+--- QUESTS ---+", self.game_state.TITLE_COLOR)
         self.game_state.add_to_history("• Check available quests with 'quests'")
         self.game_state.add_to_history("• View details with 'quest [quest_id]'")
         self.game_state.add_to_history("• Start a quest with 'quest start [quest_id]'")
         self.game_state.add_to_history("• Complete a quest with 'quest complete [quest_id]'")
         
         # Saving/Loading
-        self.game_state.add_to_history("\n┏━━━ SAVING & LOADING ━━━┓", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("\n+--- SAVING & LOADING ---+", self.game_state.TITLE_COLOR)
         self.game_state.add_to_history("• Save your game with 'save [filename]'")
         self.game_state.add_to_history("• Load a saved game with 'load [filename]'")
         self.game_state.add_to_history("• Quick slots: 'saveslot 1' and 'loadslot 1'")
         
         # Final tips
-        self.game_state.add_to_history("\n┏━━━ FINAL TIPS ━━━┓", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("\n+--- FINAL TIPS ---+", self.game_state.TITLE_COLOR)
         self.game_state.add_to_history("• Use 'help' to see all available commands")
         self.game_state.add_to_history("• Use 'help [command]' for specific command help")
         self.game_state.add_to_history("• Save often to avoid losing progress")
@@ -1643,9 +1699,9 @@ class CommandParser:
 
     def _cmd_about(self, args):
         """Display information about MiniMUD"""
-        self.game_state.add_to_history("┏━━━━━━━━━━━━━━━ ABOUT MINIMUD ━━━━━━━━━━━━━━━┓", self.game_state.TITLE_COLOR)
-        self.game_state.add_to_history("┃ A text-based RPG adventure in a mysterious cave ┃", self.game_state.TITLE_COLOR)
-        self.game_state.add_to_history("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("+--------------- ABOUT MINIMUD ---------------+", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("| A text-based RPG adventure in a mysterious cave |", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("+----------------------------------------------+", self.game_state.TITLE_COLOR)
         
         self.game_state.add_to_history("\nMiniMUD is a text-based role-playing game where you explore")
         self.game_state.add_to_history("a mysterious cave system, fight enemies, collect treasure,")
@@ -2172,10 +2228,11 @@ class CommandParser:
 
     def _show_status_effects_help(self):
         """Display help information about status effects"""
-        self.game_state.add_to_history("\n┏━━━ STATUS EFFECTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓", self.game_state.TITLE_COLOR)
-        self.game_state.add_to_history("┃ Status effects are temporary conditions that     ┃")
-        self.game_state.add_to_history("┃ affect your character in various ways.           ┃")
-        self.game_state.add_to_history("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("\n+------- STATUS EFFECTS -------+", self.game_state.TITLE_COLOR)
+        self.game_state.add_to_history("| Status effects are temporary   |")
+        self.game_state.add_to_history("| conditions that affect your    |")
+        self.game_state.add_to_history("| character in various ways.     |")
+        self.game_state.add_to_history("+------------------------------+", self.game_state.TITLE_COLOR)
         
         self.game_state.add_to_history("Current status effects:", (0, 180, 0))
         
@@ -2184,3 +2241,114 @@ class CommandParser:
         
         self.game_state.add_to_history("\nCheck your current status effects with the 'status' command.")
         self.game_state.add_to_history("Active effects are shown at the bottom of the screen.")
+
+    def _cmd_skills(self, args):
+        """Display a list of learned and available skills"""
+        # Check if skill system has been initialized
+        if not hasattr(self.game_state, 'skill_manager'):
+            self.game_state.add_to_history("You haven't learned any skills yet.")
+            return None
+        
+        # Get learned skills
+        learned_skills = self.game_state.skill_manager.get_learned_skills()
+        
+        if not learned_skills:
+            self.game_state.add_to_history("You haven't learned any skills yet.")
+        else:
+            self.game_state.add_to_history("Your Skills:", self.game_state.TITLE_COLOR)
+            current_time = self.game_state.get_game_time()
+            
+            for skill_name, skill in learned_skills:
+                # Check cooldown status
+                can_use, cooldown_message = skill.can_use(self.game_state.player, current_time)
+                cooldown_status = "Ready" if can_use else cooldown_message
+                
+                self.game_state.add_to_history(f"• {skill.display_name}: {cooldown_status}")
+                self.game_state.add_to_history(f"  {skill.description}")
+        
+        # Show available skills to learn
+        available_skills = self.game_state.skill_manager.get_available_skills()
+        
+        if available_skills:
+            self.game_state.add_to_history("\nSkills Available to Learn:", self.game_state.TITLE_COLOR)
+            for skill_name, skill in available_skills:
+                self.game_state.add_to_history(f"• {skill.display_name} (Level {skill.level_requirement})")
+                self.game_state.add_to_history(f"  {skill.description}")
+            
+            self.game_state.add_to_history("\nUse 'learn [skill_name]' to learn a new skill.")
+        
+        return None
+
+    def _cmd_learn(self, args):
+        """Learn a new skill"""
+        if not args:
+            return "Learn what? Please specify a skill name."
+        
+        # Check if skill system has been initialized
+        if not hasattr(self.game_state, 'skill_manager'):
+            from systems.skills.skill_manager import SkillManager
+            self.game_state.skill_manager = SkillManager(self.game_state)
+        
+        # Try to match the skill name
+        skill_name = ' '.join(args).lower().replace(' ', '_')
+        
+        # Try looking in available skills
+        available_skills = self.game_state.skill_manager.get_available_skills()
+        matched_skill = None
+        
+        for name, skill in available_skills:
+            if name == skill_name or name in skill_name or skill_name in name:
+                matched_skill = name
+                break
+        
+        if not matched_skill:
+            return f"Couldn't find a skill matching '{' '.join(args)}'."
+        
+        # Try to learn the skill
+        success, message = self.game_state.skill_manager.learn_skill(matched_skill)
+        self.game_state.add_to_history(message)
+        
+        return None
+
+    def _cmd_use_skill(self, args):
+        """Use a learned skill"""
+        if not args:
+            return "Use which skill? Type 'skills' to see your available skills."
+        
+        # Check if skill system has been initialized
+        if not hasattr(self.game_state, 'skill_manager'):
+            return "You haven't learned any skills yet."
+        
+        # Try to match the skill name
+        skill_text = ' '.join(args).lower()
+        learned_skills = self.game_state.skill_manager.get_learned_skills()
+        matched_skill = None
+        
+        for name, skill in learned_skills:
+            display_name = skill.display_name.lower()
+            if name == skill_text or name in skill_text or skill_text in name or skill_text in display_name:
+                matched_skill = name
+                break
+        
+        if not matched_skill:
+            return f"You don't know a skill called '{skill_text}'."
+        
+        # Check if we're in combat
+        # If so, we need a target enemy
+        current_room = self.game_state.current_room
+        enemies = self.game_state.enemy_manager.get_enemies_in_room(current_room)
+        target = None
+        
+        # If only one enemy, auto-target it
+        if len(enemies) == 1 and enemies[0].is_alive():
+            target = enemies[0]
+        
+        # Try to use the skill
+        success, message = self.game_state.skill_manager.use_skill(matched_skill, target)
+        
+        if message:  # Some skills return None if they handle their own messaging
+            self.game_state.add_to_history(message)
+        
+        return None
+
+

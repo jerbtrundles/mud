@@ -8,7 +8,7 @@ from systems.crafting import CraftingSystem
 from core.utils import get_weather_description, get_environment_effect_description, dice_roll, calculate_chance, clamp
 from systems.journal import Journal
 from systems.bestiary import Bestiary
-from systems.status_effect_manager import StatusEffectManager
+from systems.status_effects.status_effect_manager import StatusEffectManager
 
 # Colors for text
 TEXT_COLOR = (200, 200, 200)
@@ -87,12 +87,14 @@ class GameState:
         # Get region information
         region = self.world.get_region_for_room(self.current_room)
         
-        # Display room and region information
-        self.add_to_history(f"Location: {self.current_room.replace('_', ' ').title()}", TITLE_COLOR)
+        location_display = "["
         
-        if region and region.discovered:
-            self.add_to_history(f"Region: {region.display_name}", (180, 180, 255))
-        
+        if region:
+            location_display += f"{region.display_name} - "
+
+        location_display += f"{self.current_room.replace('_', ' ').title()}]"
+
+        self.add_to_history(location_display, TITLE_COLOR)
         self.add_to_history(room["description"])
         
         # Discover the region if this is the first visit
@@ -476,223 +478,460 @@ class GameState:
                 if effect_desc:
                     self.add_to_history(f"- {effect_desc}")
 
-    # Modify the combat method in GameState to track bestiary data
-    def combat(self, enemy):
-        if not enemy.is_alive():
-            return f"The {enemy.name} is already defeated."
-        
-        # Get the current region and its environment effects
-        current_region = self.world.get_region_for_room(self.current_room)
-        
-        if current_region:
-            # Get environmental effects from the region's environment system
-            env_effects = current_region.environment_system.get_effects(self.current_room)
-        else:
-            env_effects = {}  # No effects if no region found
-        
-        # Track combat stats
-        total_damage_dealt = 0
-        total_damage_taken = 0
-        
-        # Store original health percentage (for drop calculation)
-        original_health_pct = enemy.health / enemy.max_health if enemy.max_health > 0 else 0
-        
-        # Player attacks enemy with environmental modifiers
-        attack_modifier = env_effects.get("player_attack", 0)
-        
-        # Use dice_roll for attack damage (more interesting variance)
-        base_damage = dice_roll(2, 6, self.player.attack_power())  # 2d6 + attack power
-        actual_damage = clamp(base_damage + attack_modifier, 1, 999)  # Ensure at least 1 damage
-        
-        enemy.take_damage(actual_damage)
-        total_damage_dealt += actual_damage
-        
-        self.add_to_history(f"You attack the {enemy.name} for {actual_damage} damage!", self.COMBAT_COLOR)
-        
-        if enemy.health <= 0:
-            # Enemy defeated code
-            exp_gained = enemy.experience
-            self.add_to_history(f"You have defeated the {enemy.name}!", self.COMBAT_COLOR)
+        def combat(self, enemy):
+            """
+            Enhanced combat system with critical hits, dodging, and special attacks
             
-            leveled_up = self.player.gain_experience(exp_gained)
-            self.add_to_history(f"You gain {exp_gained} experience points.", self.COMBAT_COLOR)
-
-            if leveled_up:
-                self.add_to_history(f"You leveled up! You are now level {self.player.level}!", self.COMBAT_COLOR)
-                self.add_to_history(f"Your health has been restored to {self.player.health}.", self.HEALTH_COLOR)
+            Args:
+                enemy: The enemy being fought
                 
-                # Add journal entry for level up
-                self.journal.add_entry(f"Leveled up to level {self.player.level}!", "milestone")
-                
-                # Check for level-based achievements
-                if self.player.level == 5:
-                    self.journal.add_achievement(
-                        "Apprentice Adventurer", 
-                        "Reached level 5 on your adventure."
-                    )
-                elif self.player.level == 10:
-                    self.journal.add_achievement(
-                        "Veteran Explorer", 
-                        "Reached level 10 on your adventure."
-                    )
-
-            # Handle enemy drops
-            self._process_enemy_drops(enemy.name, original_health_pct)
-
-            # Update quest progress for killing enemies
-            self.quest_manager.update_quest_progress("kill", enemy.name, self.current_room)
+            Returns:
+                str: Combat result message or None
+            """
+            if not enemy.is_alive():
+                return f"The {enemy.name} is already defeated."
             
-            # Update journal stats for enemy defeat
-            self.journal.update_stats("enemies_killed", 1, enemy.name)
+            # Get the current region and its environment effects
+            current_region = self.world.get_region_for_room(self.current_room)
             
-            # Add journal entry for significant enemies
-            if enemy.name in ["goblin", "troll", "orc", "ghost"]:
-                location = self.current_room.replace("_", " ").title()
-                self.journal.add_entry(f"Defeated a {enemy.name} in {location}.", "combat")
-            
-            # Track combat in journal with victory
-            self.journal.track_combat(enemy.name, total_damage_dealt, total_damage_taken, True)
-            
-            # Update bestiary with this enemy defeat
-            self.bestiary.record_encounter(
-                enemy.name, 
-                killed=True, 
-                damage_dealt=total_damage_dealt, 
-                damage_taken=total_damage_taken, 
-                location=self.current_room
-            )
-            
-            return None
-        
-        # Enemy counterattacks with environmental accuracy modifiers
-        enemy_accuracy_mod = env_effects.get("enemy_accuracy", 0)
-        
-        # Use calculate_chance for hit probability
-        base_hit_chance = 0.8  # 80% base chance to hit
-        hit_chance = calculate_chance(base_hit_chance, [enemy_accuracy_mod / 10])
-        
-        # If accuracy check fails, enemy misses
-        if not dice_roll(1, 100, 0) <= hit_chance * 100:
-            weather = current_region.environment_system.get_weather(self.current_room) if current_region else "current"
-            self.add_to_history(f"The {enemy.name} attacks but misses you in the {weather} conditions!", self.ENEMY_COLOR)
-        else:
-            # Enemy hits with modified damage
-            counter_damage = dice_roll(1, 8, enemy.attack - 4)  # 1d8 + (attack - 4)
-            counter_damage = clamp(counter_damage, 1, 999)  # Ensure at least 1 damage
-            actual_damage = self.player.take_damage(counter_damage)
-            total_damage_taken += actual_damage
-            
-            self.add_to_history(f"The {enemy.name} counterattacks for {actual_damage} damage!", self.ENEMY_COLOR)
-            self.add_to_history(f"Your health: {self.player.health}/{self.player.max_health}", self.HEALTH_COLOR)
-
-            # NEW: Check for enemy special attacks (like poison)
-            if hasattr(enemy, 'special_attacks') and enemy.special_attacks:
-                for effect_name, effect_data in enemy.special_attacks.items():
-                    # Roll for effect chance
-                    if random.random() < effect_data.get("chance", 0):
-                        # Create and apply the status effect
-                        if effect_name == "poison":
-                            from systems.status_effects import PoisonEffect
-                            poison = PoisonEffect(
-                                duration=effect_data.get("duration", 30),
-                                strength=effect_data.get("strength", 1)
-                            )
-                            self.status_effect_manager.add_effect(poison)
-                            
-                            # Display the special attack message
-                            if "message" in effect_data:
-                                self.add_to_history(effect_data["message"], (0, 180, 0))
-
-            # Add journal entry for significant damage
-            if actual_damage > self.player.max_health // 4:  # More than 25% of max health
-                self.journal.add_entry(f"Took {actual_damage} damage from a {enemy.name}! Health critical!", "combat")
-            
-            # Check for near-death situation
-            if self.player.health < self.player.max_health // 5:  # Less than 20% health
-                self.journal.add_entry(f"Barely survived combat with a {enemy.name}. Health dangerously low!", "combat")
-                
-                # Increment near-death counter in combat stats
-                if "combat_stats" in self.journal.stats:
-                    self.journal.stats["combat_stats"]["near_death_escapes"] += 1
-        
-        if self.player.health <= 0:
-            self.add_to_history("You have been defeated! Game over.", self.COMBAT_COLOR)
-            self.game_over = True
-            
-            # Add journal entry for player defeat
-            self.journal.add_entry(f"Defeated by a {enemy.name} in {self.current_room.replace('_', ' ')}.", "death")
-            
-            # Track combat in journal with defeat
-            self.journal.track_combat(enemy.name, total_damage_dealt, total_damage_taken, False)
-        else:
-            # Track ongoing combat (not a victory or defeat yet)
-            self.journal.track_combat(enemy.name, total_damage_dealt, total_damage_taken, None)
-            
-            # Update bestiary for the encounter (not killed)
-            self.bestiary.record_encounter(
-                enemy.name,
-                killed=False,
-                damage_dealt=total_damage_dealt, 
-                damage_taken=total_damage_taken,
-                location=self.current_room
-            )
-            
-        return f"The {enemy.name} has {enemy.health}/{enemy.max_health} health remaining."
-
-    def _process_enemy_drops(self, enemy_name, health_percentage):
-        """Process drops from a defeated enemy"""
-        # Import the enemy_drops module
-        from systems.enemy_drops import get_enemy_drops
-        
-        # Get drops based on enemy type, strength, and player level
-        drops = get_enemy_drops(enemy_name, health_percentage, self.player.level)
-        
-        if not drops:
-            return  # No drops
-        
-        # Process the drops
-        drop_messages = []
-        
-        # First add coins directly
-        if "coin" in drops:
-            coin_amount = drops["coin"]
-            self.coins += coin_amount
-            drop_messages.append(f"{coin_amount} coins")
-            
-        # Add other items to the room
-        current_room = self.world.get_room(self.current_room)
-        
-        if "items" not in current_room:
-            current_room["items"] = []
-        
-        # Process non-coin items
-        from items.item_factory import ItemFactory
-        
-        for item_name, quantity in drops.items():
-            if item_name == "coin":
-                continue  # Already handled coins
-                
-            # Add item to the room
-            for _ in range(quantity):
-                current_room["items"].append(item_name)
-                
-            # Get item display name for the message
-            item_obj = ItemFactory.get_item(item_name)
-            if item_obj:
-                if quantity > 1:
-                    drop_messages.append(f"{quantity}x {item_obj.display_name()}")
-                else:
-                    drop_messages.append(item_obj.display_name())
+            if current_region:
+                # Get environmental effects from the region's environment system
+                env_effects = current_region.environment_system.get_effects(self.current_room)
             else:
-                if quantity > 1:
-                    drop_messages.append(f"{quantity}x {item_name.replace('_', ' ')}")
+                env_effects = {}  # No effects if no region found
+            
+            # Track combat stats
+            total_damage_dealt = 0
+            total_damage_taken = 0
+            critical_hits = 0
+            dodges = 0
+            
+            # Store original health percentage (for drop calculation)
+            original_health_pct = enemy.health / enemy.max_health if enemy.max_health > 0 else 0
+            
+            # === PLAYER ATTACK PHASE ===
+            
+            # Calculate base hit chance (default 90%)
+            player_hit_chance = 0.9
+            
+            # Apply modifiers from equipment and environment
+            # Equipment could add to hit chance (not implemented yet)
+            # Environmental effects can reduce hit chance 
+            if "player_accuracy" in env_effects:
+                player_hit_chance += env_effects["player_accuracy"] / 10  # Convert to percentage modifier
+                
+            # Cap hit chance between 50% and 99%
+            player_hit_chance = max(0.5, min(0.99, player_hit_chance))
+            
+            # Roll to hit
+            if random.random() < player_hit_chance:
+                # Hit succeeded! Now determine if it's a critical hit
+                crit_chance = 0.05  # Base 5% chance
+                
+                # Crit chance could be modified by equipment, skills, etc.
+                
+                is_critical = random.random() < crit_chance
+                
+                # Calculate base damage
+                base_damage = random.randint(
+                    max(1, self.player.attack_power() - 2),
+                    self.player.attack_power() + 3
+                )
+                
+                # Apply critical hit bonus if applicable
+                if is_critical:
+                    critical_hits += 1
+                    base_damage = int(base_damage * 1.5)  # 50% more damage on crits
+                    
+                # Apply environmental modifiers to damage
+                attack_modifier = env_effects.get("player_attack", 0)
+                actual_damage = max(1, base_damage + attack_modifier)
+                
+                # Apply damage to enemy
+                enemy.take_damage(actual_damage)
+                total_damage_dealt += actual_damage
+                
+                # Generate hit message
+                if is_critical:
+                    self.add_to_history(f"You land a critical hit on the {enemy.name} for {actual_damage} damage!", (255, 100, 0))  # Bright orange for crits
                 else:
-                    drop_messages.append(item_name.replace('_', ' '))
+                    self.add_to_history(f"You hit the {enemy.name} for {actual_damage} damage!", self.COMBAT_COLOR)
+            else:
+                # Player missed
+                self.add_to_history(f"You swing at the {enemy.name} but miss!", self.COMBAT_COLOR)
+            
+            # Check if enemy was defeated
+            if enemy.health <= 0:
+                # Enemy defeated
+                exp_gained = enemy.experience
+                self.add_to_history(f"You have defeated the {enemy.name}!", self.COMBAT_COLOR)
+                
+                # Award experience
+                leveled_up = self.player.gain_experience(exp_gained)
+                self.add_to_history(f"You gain {exp_gained} experience points.", self.COMBAT_COLOR)
+
+                if leveled_up:
+                    self.add_to_history(f"You leveled up! You are now level {self.player.level}!", self.COMBAT_COLOR)
+                    self.add_to_history(f"Your health has been restored to {self.player.health}.", self.HEALTH_COLOR)
+                    
+                    # Add journal entry for level up
+                    self.journal.add_entry(f"Leveled up to level {self.player.level}!", "milestone")
+                    
+                    # Check for level-based achievements
+                    if self.player.level == 5:
+                        self.journal.add_achievement(
+                            "Apprentice Adventurer", 
+                            "Reached level 5 on your adventure."
+                        )
+                    elif self.player.level == 10:
+                        self.journal.add_achievement(
+                            "Veteran Explorer", 
+                            "Reached level 10 on your adventure."
+                        )
+                    elif self.player.level == 15:
+                        self.journal.add_achievement(
+                            "Master Delver", 
+                            "Reached level 15 on your adventure."
+                        )
+
+                # Handle enemy drops with enhanced system
+                from systems.enemy_drops import process_enemy_drops, display_drops
+                drops = process_enemy_drops(enemy, self.player.level)
+                display_drops(self, enemy.name, drops)
+                
+                # Add drops to player inventory or room
+                for item_name, quantity in drops.items():
+                    if item_name == "coin":
+                        self.coins += quantity
+                    else:
+                        for _ in range(quantity):
+                            self.player.add_to_inventory(item_name)
+
+                # Update quest progress for killing enemies
+                self.quest_manager.update_quest_progress("kill", enemy.name, self.current_room)
+                
+                # Update journal stats for enemy defeat
+                self.journal.update_stats("enemies_killed", 1, enemy.name)
+                
+                # Add journal entry for significant enemies
+                if enemy.name in ["goblin_shaman", "dire_wolf", "stone_golem", "crystal_guardian", "mind_flayer"]:
+                    location = self.current_room.replace("_", " ").title()
+                    self.journal.add_entry(f"Defeated a {enemy.name} in {location}.", "combat")
+                
+                # Track combat in journal with victory
+                self.journal.track_combat(enemy.name, total_damage_dealt, total_damage_taken, True, 
+                                        critical_hits=critical_hits, dodges=dodges)
+                
+                # Update bestiary with this enemy defeat
+                self.bestiary.record_encounter(
+                    enemy.name, 
+                    killed=True, 
+                    damage_dealt=total_damage_dealt, 
+                    damage_taken=total_damage_taken, 
+                    location=self.current_room
+                )
+                
+                return None
+            
+            # === ENEMY ATTACK PHASE ===
+            
+            # Calculate enemy hit chance (base 80%)
+            enemy_hit_chance = 0.8
+            
+            # Apply environmental accuracy modifiers
+            enemy_accuracy_mod = env_effects.get("enemy_accuracy", 0)
+            enemy_hit_chance += enemy_accuracy_mod / 10  # Convert to percentage
+            
+            # Apply dodge chance from player skills/equipment (could be implemented)
+            player_dodge_chance = 0.1  # Base 10% dodge chance
+            
+            # Cap hit and dodge chances
+            enemy_hit_chance = max(0.5, min(0.95, enemy_hit_chance))
+            player_dodge_chance = max(0.05, min(0.3, player_dodge_chance))
+            
+            # Check if player dodges
+            if random.random() < player_dodge_chance:
+                dodges += 1
+                self.add_to_history(f"You nimbly dodge the {enemy.name}'s attack!", self.COMBAT_COLOR)
+            elif random.random() < enemy_hit_chance:
+                # Enemy hit succeeded!
+                
+                # Check for special attacks
+                special_attack = None
+                if hasattr(enemy, 'special_attacks') and enemy.special_attacks:
+                    for effect_name, effect_data in enemy.special_attacks.items():
+                        # Roll for effect chance
+                        if random.random() < effect_data.get("chance", 0):
+                            special_attack = (effect_name, effect_data)
+                            break
+                
+                # Calculate damage
+                if special_attack:
+                    attack_name, attack_data = special_attack
+                    
+                    if attack_name == "poison":
+                        # Normal damage + poison effect
+                        base_damage = random.randint(
+                            max(1, enemy.attack - 3),
+                            enemy.attack + 1
+                        )
+                        
+                        # Create and apply poison effect
+                        from systems.status_effects.status_effects import PoisonEffect
+                        poison = PoisonEffect(
+                            duration=attack_data.get("duration", 30),
+                            strength=attack_data.get("strength", 1)
+                        )
+                        self.status_effect_manager.add_effect(poison)
+                        
+                        # Display message
+                        message = attack_data.get("message", f"The {enemy.name} poisons you!")
+                        self.add_to_history(message, (0, 180, 0))
+                        
+                    elif attack_name == "ranged":
+                        # Ranged attack with damage multiplier
+                        base_damage = random.randint(
+                            max(1, enemy.attack - 3),
+                            enemy.attack + 1
+                        )
+                        damage_mult = attack_data.get("damage_mult", 1.2)
+                        base_damage = int(base_damage * damage_mult)
+                        
+                        # Display message
+                        message = attack_data.get("message", f"The {enemy.name} attacks from a distance!")
+                        self.add_to_history(message, self.ENEMY_COLOR)
+                        
+                    elif attack_name == "magic":
+                        # Magic attack with damage multiplier
+                        base_damage = random.randint(
+                            max(1, enemy.attack - 2),
+                            enemy.attack + 2
+                        )
+                        damage_mult = attack_data.get("damage_mult", 1.5)
+                        base_damage = int(base_damage * damage_mult)
+                        
+                        # Display message
+                        message = attack_data.get("message", f"The {enemy.name} casts a spell at you!")
+                        self.add_to_history(message, self.ENEMY_COLOR)
+                        
+                    elif attack_name == "rend":
+                        # Physical attack + bleeding effect
+                        base_damage = random.randint(
+                            max(1, enemy.attack - 3),
+                            enemy.attack + 1
+                        )
+                        
+                        # Apply bleeding status effect
+                        from systems.status_effects.bleeding_effect import apply_bleeding_effect
+                        bleed = apply_bleeding_effect(
+                            self,
+                            duration=attack_data.get("bleed_duration", 20),
+                            strength=attack_data.get("bleed_damage", 1)
+                        )
+                        
+                        # Display message
+                        message = attack_data.get("message", f"The {enemy.name} tears at your flesh!")
+                        self.add_to_history(message, self.ENEMY_COLOR)
+                        
+                    elif attack_name == "split":
+                        # Special ability for slimes - split when low on health
+                        # This would need to be implemented to actually spawn a new enemy
+                        base_damage = random.randint(
+                            max(1, enemy.attack - 4),
+                            enemy.attack
+                        )
+                        
+                        message = attack_data.get("message", f"The {enemy.name} splits into two!")
+                        self.add_to_history(message, self.ENEMY_COLOR)
+                        
+                        # TODO: Implement actual enemy splitting
+                        
+                    else:
+                        # Default for unknown special attacks
+                        base_damage = random.randint(
+                            max(1, enemy.attack - 2),
+                            enemy.attack + 2
+                        )
+                        
+                        message = f"The {enemy.name} uses an unknown special attack!"
+                        self.add_to_history(message, self.ENEMY_COLOR)
+                else:
+                    # Normal attack
+                    base_damage = random.randint(
+                        max(1, enemy.attack - 2),
+                        enemy.attack + 2
+                    )
+                    
+                # Apply player defense
+                final_damage = max(1, base_damage - self.player.defense_power())
+                actual_damage = self.player.take_damage(final_damage)
+                total_damage_taken += actual_damage
+                
+                # Display damage message if not already shown by special attack
+                if not special_attack or special_attack[0] not in ["poison", "ranged", "magic", "rend", "split"]:
+                    self.add_to_history(f"The {enemy.name} hits you for {actual_damage} damage!", self.ENEMY_COLOR)
+                
+                # Display current health
+                self.add_to_history(f"Your health: {self.player.health}/{self.player.max_health}", self.HEALTH_COLOR)
+                
+            else:
+                # Enemy missed
+                self.add_to_history(f"The {enemy.name} attacks but misses you!", self.ENEMY_COLOR)
+            
+            # Check if player died
+            if self.player.health <= 0:
+                self.add_to_history("You have been defeated! Game over.", self.COMBAT_COLOR)
+                self.game_over = True
+                
+                # Add journal entry for player defeat
+                self.journal.add_entry(f"Defeated by a {enemy.name} in {self.current_room.replace('_', ' ')}.", "death")
+                
+                # Track combat in journal with defeat
+                self.journal.track_combat(enemy.name, total_damage_dealt, total_damage_taken, False,
+                                        critical_hits=critical_hits, dodges=dodges)
+                
+                # Update bestiary for the encounter
+                self.bestiary.record_encounter(
+                    enemy.name,
+                    killed=False,
+                    damage_dealt=total_damage_dealt, 
+                    damage_taken=total_damage_taken,
+                    location=self.current_room
+                )
+            else:
+                # Track ongoing combat (not a victory or defeat yet)
+                self.journal.track_combat(enemy.name, total_damage_dealt, total_damage_taken, None,
+                                        critical_hits=critical_hits, dodges=dodges)
+                
+                # Update bestiary for the encounter (not killed)
+                self.bestiary.record_encounter(
+                    enemy.name,
+                    killed=False,
+                    damage_dealt=total_damage_dealt, 
+                    damage_taken=total_damage_taken,
+                    location=self.current_room
+                )
+                
+            return f"The {enemy.name} has {enemy.health}/{enemy.max_health} health remaining."    
+
+    def process_enemy_drops(enemy, player_level, player_luck=0):
+        """
+        Generate drops when an enemy is defeated, using the enhanced drop system
         
-        # Create message about the drops
-        if drop_messages:
-            drop_list = ", ".join(drop_messages)
-            self.add_to_history(f"The {enemy_name} dropped: {drop_list}!", (100, 220, 100))  # Light green color
+        Args:
+            enemy (Enemy): The defeated enemy object
+            player_level (int): Current player level
+            player_luck (int): Player's luck stat modifier (if implemented)
+            
+        Returns:
+            dict: Dictionary of {item_name: quantity} representing drops
+        """
+        drops = {}
+        
+        # First check if enemy has specific drop data
+        if hasattr(enemy, 'drops') and enemy.drops:
+            enemy_drops = enemy.drops
+            
+            # Process common drops (higher chance)
+            if "common" in enemy_drops:
+                for drop_info in enemy_drops["common"]:
+                    item_name, min_qty, max_qty, base_chance = drop_info
+                    
+                    # Apply luck modifier to chance
+                    modified_chance = base_chance * (1 + (player_luck * 0.05))
+                    
+                    if random.random() < modified_chance:
+                        quantity = random.randint(min_qty, max_qty)
+                        if item_name in drops:
+                            drops[item_name] += quantity
+                        else:
+                            drops[item_name] = quantity
+            
+            # Process uncommon drops (lower chance)
+            if "uncommon" in enemy_drops:
+                for drop_info in enemy_drops["uncommon"]:
+                    item_name, min_qty, max_qty, base_chance = drop_info
+                    
+                    # Apply luck and level modifiers to chance
+                    # Higher level enemies have better chances for uncommon drops
+                    level_factor = min(1.5, enemy.experience / 10)  # Experience as a proxy for enemy level
+                    modified_chance = base_chance * level_factor * (1 + (player_luck * 0.1))
+                    
+                    if random.random() < modified_chance:
+                        quantity = random.randint(min_qty, max_qty)
+                        if item_name in drops:
+                            drops[item_name] += quantity
+                        else:
+                            drops[item_name] = quantity
+            
+            # Process rare drops (very low chance)
+            if "rare" in enemy_drops:
+                for drop_info in enemy_drops["rare"]:
+                    item_name, min_qty, max_qty, base_chance = drop_info
+                    
+                    # Apply significant luck and level modifiers to chance
+                    level_factor = min(2.0, enemy.experience / 8)  # Experience as a proxy for enemy level
+                    modified_chance = base_chance * level_factor * (1 + (player_luck * 0.15))
+                    
+                    if random.random() < modified_chance:
+                        quantity = random.randint(min_qty, max_qty)
+                        if item_name in drops:
+                            drops[item_name] += quantity
+                        else:
+                            drops[item_name] = quantity
+        
+        # Fall back to generic drops if no specific drops or as a supplement
+        if not drops or random.random() < 0.3:  # 30% chance to add generic drops in addition
+            # Get enemy "level" based on experience or health
+            enemy_level = max(1, enemy.experience // 5)  # Crude approximation
+            
+            # Coins almost always drop
+            if random.random() < 0.9:  # 90% chance
+                base_coins = enemy_level * 2
+                coin_amount = max(1, int(base_coins * random.uniform(0.7, 1.3)))  # ±30% variation
+                if "coin" in drops:
+                    drops["coin"] += coin_amount
+                else:
+                    drops["coin"] = coin_amount
+            
+            # Generic item drops
+            generic_drops = {
+                "common": [
+                    ("healing_potion", 0.15),
+                    ("bread", 0.1),
+                    ("torch", 0.05)
+                ],
+                "uncommon": [
+                    ("strong_healing_potion", 0.05),
+                    ("common_box_key", 0.08),
+                    ("gem", 0.07)
+                ],
+                "rare": [
+                    ("uncommon_box_key", 0.03),
+                    ("stamina_potion", 0.04),
+                    ("rare_box_key", 0.01)
+                ]
+            }
+            
+            # Process generic common drops
+            for item_name, chance in generic_drops["common"]:
+                if random.random() < chance * (1 + (player_luck * 0.05)):
+                    drops[item_name] = drops.get(item_name, 0) + 1
+            
+            # Process generic uncommon drops - affected by enemy level
+            for item_name, chance in generic_drops["uncommon"]:
+                level_factor = min(1.5, enemy_level / player_level)
+                if random.random() < chance * level_factor * (1 + (player_luck * 0.1)):
+                    drops[item_name] = drops.get(item_name, 0) + 1
+            
+            # Process generic rare drops - significantly affected by enemy level
+            for item_name, chance in generic_drops["rare"]:
+                level_factor = min(2.0, enemy_level / player_level)
+                if random.random() < chance * level_factor * (1 + (player_luck * 0.15)):
+                    drops[item_name] = drops.get(item_name, 0) + 1
+        
+        return drops
+
 
     def check_region(self):
         """Display information about the current region"""
@@ -827,3 +1066,74 @@ class GameState:
         self.add_to_history("\nSYSTEM:", TITLE_COLOR)
         self.add_to_history("  help (h) - Show this help message or 'help [command]' for details")
         self.add_to_history("  quit (q, exit) - Exit the game")
+
+    def display_drops(game_state, enemy_name, drops):
+        """Format and display drops to the player in an appealing way"""
+        if not drops:
+            game_state.add_to_history(f"The {enemy_name} didn't drop anything.")
+            return
+        
+        # Categorize drops for better presentation
+        coins = drops.get("coin", 0)
+        equipment = []
+        consumables = []
+        keys = []
+        other = []
+        
+        from items.item_factory import ItemFactory
+        
+        # Sort drops into categories
+        for item_name, quantity in drops.items():
+            if item_name == "coin":
+                continue  # Handled separately
+                
+            item = ItemFactory.get_item(item_name)
+            if not item:
+                other.append((item_name.replace('_', ' '), quantity))
+                continue
+                
+            if item.type in ["weapon", "armor"]:
+                equipment.append((item.display_name(), quantity))
+            elif item.type in ["consumable", "food", "drink"]:
+                consumables.append((item.display_name(), quantity))
+            elif "key" in item_name:
+                keys.append((item.display_name(), quantity))
+            else:
+                other.append((item.display_name(), quantity))
+        
+        # Create the drop message
+        game_state.add_to_history(f"The {enemy_name} dropped:", (100, 220, 100))
+        
+        # Show coins first if any
+        if coins > 0:
+            game_state.add_to_history(f"• {coins} coins", (255, 215, 0))  # Gold color
+        
+        # Show equipment with special highlighting
+        for name, qty in equipment:
+            if qty > 1:
+                game_state.add_to_history(f"• {qty}x {name}", (220, 150, 150))  # Light red for equipment
+            else:
+                game_state.add_to_history(f"• {name}", (220, 150, 150))
+        
+        # Show keys with special highlighting
+        for name, qty in keys:
+            if qty > 1:
+                game_state.add_to_history(f"• {qty}x {name}", (150, 150, 220))  # Light blue for keys
+            else:
+                game_state.add_to_history(f"• {name}", (150, 150, 220))
+        
+        # Show consumables
+        for name, qty in consumables:
+            if qty > 1:
+                game_state.add_to_history(f"• {qty}x {name}", (150, 220, 150))  # Light green for consumables
+            else:
+                game_state.add_to_history(f"• {name}", (150, 220, 150))
+        
+        # Show other items
+        for name, qty in other:
+            if qty > 1:
+                game_state.add_to_history(f"• {qty}x {name}")
+            else:
+                game_state.add_to_history(f"• {name}")
+        
+        return
